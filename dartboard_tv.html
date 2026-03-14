@@ -147,8 +147,9 @@
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    gap: 24px;
+    gap: 12px;
     overflow: hidden;
+    justify-content: space-between;
   }
 
   .tv-sidebar {
@@ -167,17 +168,20 @@
   }
   .game-mode-badge {
     font-family: var(--font-display);
-    font-size: 14px;
-    letter-spacing: 3px;
+    font-size: 32px;
+    letter-spacing: 4px;
+    line-height: 1;
     color: var(--primary);
     background: var(--primary-glow);
     border: 1px solid var(--primary-dim);
-    padding: 6px 14px;
+    padding: 8px 16px 4px;
     border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
   }
   .turn-indicator {
     font-family: var(--font-mono);
-    font-size: 13px;
+    font-size: 20px;
     color: var(--muted);
   }
   .turn-indicator span { color: var(--white); }
@@ -185,15 +189,15 @@
   /* Player cards grid */
   .players-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 16px;
   }
 
   .player-card {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px;
+    border-radius: 16px;
+    padding: 28px 20px 24px;
     position: relative;
     overflow: hidden;
     transition: all 0.3s;
@@ -203,19 +207,11 @@
     min-width: 0;
   }
   .player-card.active-player {
-    border-color: var(--primary);
-    box-shadow: 0 0 30px var(--primary-glow), inset 0 0 30px var(--primary-glow);
+    border-width: 2px;
   }
+  .player-card.active-player .player-avatar { border-width: 3px; }
   .player-card.active-player::before {
-    content: 'THROWING';
-    position: absolute; top: 10px; right: 10px;
-    font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 2px;
-    color: var(--primary);
-    background: var(--primary-glow);
-    padding: 3px 8px;
-    border-radius: 3px;
+    content: none;
   }
   .player-card.winner {
     border-color: var(--green);
@@ -223,21 +219,22 @@
   }
 
   .player-avatar {
-    width: 52px; height: 52px;
+    width: 80px; height: 80px;
     border-radius: 50%;
     background: var(--border);
     display: flex; align-items: center; justify-content: center;
-    margin-bottom: 12px;
+    margin-bottom: 16px;
     overflow: hidden;
-    border: 2px solid var(--border);
+    border: 3px solid var(--border);
   }
   .player-avatar img { width: 100%; height: 100%; object-fit: cover; }
-  .player-card.active-player .player-avatar { border-color: var(--primary); }
+  .player-card.active-player .player-avatar { border-width: 3px; }
 
   .player-name {
-    font-size: 15px;
-    font-weight: 600;
-    margin-bottom: 8px;
+    font-family: var(--font-display);
+    font-size: 52px;
+    line-height: 1;
+    margin-bottom: 10px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -247,20 +244,19 @@
   }
   .player-score {
     font-family: var(--font-display);
-    font-size: 72px;
+    font-size: 110px;
     line-height: 1;
     color: var(--white);
     transition: all 0.3s;
   }
-  .player-card.active-player .player-score { color: var(--primary); }
   .player-score.bust { color: var(--red) !important; animation: shake 0.4s; }
   .player-score.scored { animation: scoreFlash 0.5s; }
 
   .player-sub {
     font-family: var(--font-mono);
-    font-size: 12px;
+    font-size: 14px;
     color: var(--muted);
-    margin-top: 4px;
+    margin-top: 6px;
   }
 
   /* Dart slots */
@@ -296,17 +292,100 @@
     color: var(--muted);
   }
 
-  /* Dartboard SVG */
-  .board-container {
+  /* Turn panel (current + up next) */
+  .turn-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+  }
+  .turn-panel-label {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 8px;
+  }
+  .turn-now {
+    border: 2px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 16px;
+    gap: 8px;
+  }
+  .turn-now-label { display: none; }
+  .turn-now-name {
+    font-family: var(--font-display);
+    font-size: 80px !important;
+    color: var(--white);
+    line-height: 1;
+    text-align: center;
+  }
+  .turn-now-darts {
+    display: flex;
+    gap: 6px;
+    margin-top: 2px;
+  }
+  .turn-next {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .turn-next-label {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 4px;
+  }
+  .turn-next-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 0;
+  }
+  .turn-next-pos {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    width: 44px;
+    flex-shrink: 0;
+    letter-spacing: 1px;
+  }
+  .turn-next-name {
+    font-family: var(--font-display);
+    font-size: 30px;
+    color: var(--white);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Dartboard SVG */
+  .board-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 48px;
+    padding-bottom: 16px;
+    width: 100%;
   }
 
   .board-wrap {
     position: relative;
-    width: 340px; height: 340px;
+    width: 360px; height: 360px;
+    flex-shrink: 0;
   }
   .board-wrap svg { width: 100%; height: 100%; }
 
@@ -315,21 +394,23 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    width: 100%;
-    max-width: 340px;
+    flex: 1;
+    min-width: 0;
   }
   .darts-feed-title {
     font-family: var(--font-mono);
-    font-size: 11px;
-    letter-spacing: 2px;
+    font-size: 18px;
+    letter-spacing: 3px;
     color: var(--muted);
     text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 8px;
   }
   .dart-entry {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 12px 16px;
     background: var(--card);
     border-radius: 8px;
     border-left: 3px solid var(--border);
@@ -339,11 +420,11 @@
   .dart-entry.double { border-left-color: #4a9eff; }
   .dart-entry.bull { border-left-color: var(--red); }
   .dart-entry.miss { border-left-color: var(--muted); opacity: 0.5; }
-  .dart-entry-left { font-size: 13px; color: var(--muted); }
+  .dart-entry-left { font-size: 18px; color: var(--muted); display: flex; align-items: center; gap: 10px; }
   .dart-entry-left strong { color: var(--white); }
   .dart-entry-score {
     font-family: var(--font-display);
-    font-size: 22px;
+    font-size: 32px;
     color: var(--white);
   }
   .dart-entry.triple .dart-entry-score { color: var(--primary); }
@@ -356,7 +437,7 @@
   }
   .sidebar-label {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 20px;
     letter-spacing: 3px;
     color: var(--muted);
     text-transform: uppercase;
@@ -369,7 +450,7 @@
     background: var(--primary-glow);
     border-bottom: 1px solid var(--primary-dim);
     font-family: var(--font-display);
-    font-size: 24px;
+    font-size: 30px;
     letter-spacing: 1px;
     color: var(--primary);
     min-height: 64px;
@@ -657,15 +738,16 @@
     font-weight: 500;
     padding: 4px 7px;
     border-radius: 5px;
-    border: 1px solid var(--primary-dim);
-    background: var(--primary-glow);
-    color: var(--primary);
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.05);
+    color: var(--white);
     letter-spacing: 0.5px;
     white-space: nowrap;
   }
   .checkout-dart.triple { border-color: #005c36; background: rgba(0,92,54,0.25); color: #00c968; }
   .checkout-dart.double { border-color: #1a4a8a; background: rgba(74,158,255,0.12); color: #4a9eff; }
   .checkout-dart.bull   { border-color: #8a1a1a; background: rgba(230,57,70,0.12); color: #e63946; }
+  .checkout-dart.single { border-color: var(--border); background: rgba(255,255,255,0.05); color: var(--muted); }
 
   .player-combo-item:hover,
   .player-combo-item.combo-active {
@@ -698,10 +780,10 @@
 
 
   .scores-table { width: 100%; border-collapse: collapse; }
-  .scores-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
-  .scores-table td:last-child { text-align: right; font-family: var(--font-display); font-size: 20px; color: var(--primary); }
+  .scores-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); font-size: 20px; }
+  .scores-table td:last-child { text-align: right; font-family: var(--font-display); font-size: 28px; }
   .scores-table tr:last-child td { border-bottom: none; }
-  .scores-table tr.active-row td { background: var(--primary-glow); }
+  .scores-table tr.active-row td { background: rgba(255,255,255,0.04); }
 
   /* History */
   .history-item {
@@ -753,19 +835,8 @@
 
   .divider { height: 1px; background: var(--border); margin: 4px 0; }
 
-  .winner-banner {
-    display: none;
-    background: linear-gradient(90deg, #1a1200, #2a1e00, #1a1200);
-    border-bottom: 2px solid #f5a623;
-    padding: 14px 32px;
-    text-align: center;
-    font-family: var(--font-display);
-    font-size: 28px;
-    letter-spacing: 3px;
-    color: #f5a623;
-  }
-  .winner-banner.visible { display: block; }
-  .medal-gold   { border-color: #f5a623 !important; box-shadow: 0 0 12px rgba(245,166,35,0.3); }
+  .winner-banner { display: none !important; }
+  .medal-gold   { border-color: #f5a623 !important; box-shadow: 0 0 40px rgba(245,166,35,0.6), 0 0 80px rgba(245,166,35,0.25), inset 0 0 20px rgba(245,166,35,0.08) !important; }
   .medal-silver { border-color: #c0c0c0 !important; box-shadow: 0 0 8px rgba(192,192,192,0.2); }
   .medal-bronze { border-color: #cd7f32 !important; box-shadow: 0 0 8px rgba(205,127,50,0.2); }
   tr.medal-gold   td:first-child { border-left: 3px solid #f5a623; }
@@ -819,16 +890,16 @@
       <p>Set up a game on the Companion app</p>
     </div>
 
-    <div id="tvGame" style="display:none">
-      <div class="winner-banner" id="tvWinnerBanner"></div>
+    <div id="tvGame" style="display:none;position:relative;height:1080px">
       <div class="tv-layout">
         <div class="tv-main">
           <div class="game-header">
             <div class="game-mode-badge" id="tvModeBadge">501</div>
-            <div class="turn-indicator">Turn <span id="tvTurnNum">1</span> &nbsp;·&nbsp; <span id="tvCurrentName">—</span>'s throw</div>
+            <div class="turn-indicator">Round <span id="tvRoundNum">1</span> &nbsp;·&nbsp; Turn <span id="tvTurnNum">1</span></div>
           </div>
           <div class="players-grid" id="tvPlayersGrid"></div>
           <div class="board-container">
+            <div class="turn-panel" id="tvTurnPanel"></div>
             <div class="board-wrap">
               <svg id="tvBoardSvg" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg"></svg>
             </div>
@@ -845,7 +916,8 @@
             <table class="scores-table" id="tvScoresTable"></table>
           </div>
         </div>
-      </div>
+      </div><!-- /tv-layout -->
+      <div class="winner-banner" id="tvWinnerBanner"></div>
     </div>
 
   </div><!-- /tv-frame -->
@@ -885,14 +957,19 @@ function setWS(status) {
 }
 
 function handleEvent(event, payload) {
-  if (['game_started','dart_scored','score_overridden','dart_undone','turn_changed','state_sync'].includes(event)) {
+  if (['game_started','dart_scored','score_overridden','dart_undone','turn_changed','state_sync','game_over'].includes(event)) {
     state = payload.state || payload;
-    if (event === 'game_started') dartHits = {};
+    if (event === 'game_started') {
+      dartHits = {};
+      feedItems = [];
+      const feed = document.getElementById('tvDartsFeed');
+      if (feed) feed.innerHTML = '';
+    }
     if (event === 'dart_scored' && payload.dart) {
       addDartToFeed(payload.dart);
       addHitMarker(payload.dart.segment, payload.dart.ring, payload.dart.player_id);
     }
-    if (event === 'game_over' || (payload && payload.game_over)) {
+    if (event === 'game_over' || (state && state.game_over)) {
       showGameOver(payload);
     }
     renderAll();
@@ -902,6 +979,12 @@ function handleEvent(event, payload) {
   }
   if (event === 'game_ended') {
     state = null;
+    teamAssignments = [];
+    teamNames = [];
+    _toggleState['teams_enabled'] = false;
+    document.querySelectorAll('[data-toggle="teams_enabled"]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === 'false');
+    });
     renderAll();
   }
 }
@@ -936,6 +1019,22 @@ function renderAll() {
   renderTV();
 }
 
+// Shared player/team color lookup used by turn panel, sidebar, and dart feed
+function playerColorOf(pid) {
+  const palette = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
+  const player = state && state.players && state.players.find(p => p.id === pid);
+  if (player && player.color) return player.color;
+  // Fallback for players without a stored color
+  const ds = (state && state.mode_display) || {};
+  const teams = ds.teams;
+  if (teams && teams.length) {
+    const idx = teams.findIndex(t => t.player_ids.includes(pid));
+    return idx >= 0 ? palette[idx % palette.length] : 'var(--muted)';
+  }
+  const idx = (state && state.players || []).findIndex(p => p.id === pid);
+  return idx >= 0 ? palette[idx % palette.length] : 'var(--muted)';
+}
+
 function renderTV() {
   const noGame = document.getElementById('tvNoGame');
   const game = document.getElementById('tvGame');
@@ -951,16 +1050,24 @@ function renderTV() {
   if (state.game_over && winnerBanner) {
     const ds = state.mode_display || {};
     const teams = ds.teams;
-    let winnerLabel = 'GAME SHOT!';
+    let winnerLabel = '';
     if (state.winner_id) {
       if (teams && teams.length) {
-        const wt = teams.find(t => t.team_id === state.winner_id);
-        if (wt) winnerLabel = '🏆 ' + wt.name + ' wins!';
-      } else {
+        // winner_id may be a team_id or a player_id
+        const byTeamId = teams.find(t => t.team_id === state.winner_id);
+        if (byTeamId) {
+          winnerLabel = '🏆 ' + byTeamId.name + ' wins!';
+        } else {
+          const byPlayer = teams.find(t => t.player_ids && t.player_ids.includes(state.winner_id));
+          if (byPlayer) winnerLabel = '🏆 ' + byPlayer.name + ' wins!';
+        }
+      }
+      if (!winnerLabel) {
         const wp = state.players.find(p => p.id === state.winner_id);
         if (wp) winnerLabel = '🏆 ' + wp.name + ' wins!';
       }
     }
+    if (!winnerLabel) winnerLabel = '🏆 Game over!';
     winnerBanner.textContent = winnerLabel;
     winnerBanner.classList.add('visible');
   } else if (winnerBanner) {
@@ -976,12 +1083,19 @@ function renderTV() {
     game.style.display = 'block';
   }
 
-  const modeBadgeText = state.mode === 'x01' && state.options && state.options.start_score
-    ? String(state.options.start_score)
-    : state.mode_name || state.mode;
+  let modeBadgeText;
+  if (state.mode === 'x01') {
+    const opts = state.options || {};
+    const startScore = opts.start_score || opts.starting_score || opts.score;
+    modeBadgeText = startScore ? String(startScore) : (state.mode_name || state.mode);
+  } else {
+    modeBadgeText = state.mode_name || state.mode;
+  }
   document.getElementById('tvModeBadge').textContent = modeBadgeText;
   document.getElementById('tvTurnNum').textContent = state.turn_number;
-  document.getElementById('tvCurrentName').textContent = state.current_player_name;
+  const playerCount = (state.players || []).length || 1;
+  const roundNum = Math.ceil(state.turn_number / playerCount);
+  document.getElementById('tvRoundNum').textContent = roundNum;
 
   const ds = state.mode_display || {};
   const mode = state.mode;
@@ -999,21 +1113,26 @@ function renderTV() {
     // Standard players grid
     const grid = document.getElementById('tvPlayersGrid');
     grid.style.display = '';
+    grid.style.gridTemplateColumns = `repeat(${state.players.length}, 1fr)`;
+    // Scale name font down for more players so it fits the card
+    const nameFontSize = Math.max(24, Math.min(52, Math.floor(200 / state.players.length)));
     grid.innerHTML = state.players.map(p => {
       const score = state.player_scores[p.id];
       const isActive = p.id === state.current_player_id;
       const dartsThrown = state.darts_this_turn.filter(d => d.player_id === p.id).length;
+      const pc0 = playerColorOf(p.id);
       const slots = [0,1,2].map(i =>
-        `<div class="dart-slot ${i < dartsThrown ? 'thrown' : ''}"></div>`
+        `<div class="dart-slot" style="background:${i < dartsThrown ? pc0 : 'var(--border)'}"></div>`
       ).join('');
       const avatarContent = avatarHtml(p);
 
       let subContent = '';
+      let preContent = '';
       let scoreDisplay = score;
 
       if (mode === 'x01') {
         subContent = `<div class="player-sub">remaining</div>`;
-        const co = ds.checkouts && ds.checkouts[p.id];
+        const co = normalizeCheckoutHint(ds.checkouts && ds.checkouts[p.id]);
         subContent += `<div style="min-height:32px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:5px;margin-top:4px">${co ? checkoutBoxesHtml(co) : ''}</div>`;
       } else if (mode === 'killer') {
         const isKiller = ds.is_killer && ds.is_killer[p.id];
@@ -1048,17 +1167,29 @@ function renderTV() {
         const isElim = ds.eliminated && ds.eliminated[p.id];
         const pips = Array.from({length:startLives},(_,i)=>`<div class="life-pip${i>=lives?' lost':''}"></div>`).join('');
         scoreDisplay = isElim ? `<span style="color:var(--red);font-size:52px;font-family:var(--font-display);letter-spacing:3px;line-height:1">OUT</span>` : pts;
-        subContent = isElim ? '' : `<div class="lives-row">${pips}</div><div class="player-sub">pts · ${lives} lives</div>`;
+        subContent = isElim ? '' : `<div class="lives-row">${pips}</div>`;
+      } else if (mode === 'around_the_clock') {
+        const target = ds.targets && ds.targets[p.id];
+        const targetLabel = target === 25 ? 'BULL' : (target || '?');
+        preContent = `<div class="player-sub" style="font-size:11px;letter-spacing:3px;color:var(--muted);margin-bottom:2px">TARGET</div>`;
+        scoreDisplay = targetLabel;
       } else {
         subContent = `<div class="player-sub">points</div>`;
       }
 
       const medalClass = state.game_over ? getMedalClass(p.id, 'player') : '';
+      const pc = playerColorOf(p.id);
+      const pcGlow = pc + '22';
+      const cardStyle = isActive
+        ? `border-color:${pc};box-shadow:0 0 30px ${pcGlow},inset 0 0 30px ${pcGlow}`
+        : '';
+      const scoreColor = isActive ? pc : '';
       return `
-        <div class="player-card ${isActive ? 'active-player' : ''} ${medalClass}">
-          <div class="player-avatar">${avatarContent}</div>
-          <div class="player-name">${p.name}</div>
-          <div class="player-score" id="score-${p.id}">${scoreDisplay}</div>
+        <div class="player-card ${isActive ? 'active-player' : ''} ${medalClass}" style="${cardStyle}">
+          <div class="player-avatar" style="${isActive ? `border-color:${pc}` : ''}">${avatarContent}</div>
+          <div class="player-name" style="font-size:${nameFontSize}px">${p.name}</div>
+          ${preContent}
+          <div class="player-score" id="score-${p.id}" style="${scoreColor ? `color:${scoreColor}` : ''}">${scoreDisplay}</div>
           ${subContent}
           ${isActive ? `<div class="dart-slots">${slots}</div>` : ''}
         </div>`;
@@ -1093,10 +1224,11 @@ function renderTV() {
 
   const currentHits = (state && dartHits[state.current_player_id]) ? dartHits[state.current_player_id] : [];
   drawBoard('tvBoardSvg', currentHits);
+  renderTurnPanel();
 
   // Scores table (sidebar)
   const table = document.getElementById('tvScoresTable');
-  const teamColors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+  const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
 
   const dartBoxColor = (d) => {
     if (!d) return null;
@@ -1109,18 +1241,18 @@ function renderTV() {
     return '#c8cdd4';
   };
 
-  const miniDartBoxes = (pid) => {
+  const miniDartBoxes = (pid, boxW=54, boxH=30, fontSize=15) => {
     const isActive = pid === state.current_player_id;
     const darts = isActive
       ? state.darts_this_turn
       : (state.last_turn_darts && state.last_turn_darts[pid]) || [];
-    return `<div style="display:flex;gap:3px;margin-top:3px">` +
+    return `<div style="display:flex;gap:${boxW > 50 ? 8 : 3}px;margin-top:3px">` +
       [0,1,2].map(i => {
         const d = darts[i];
-        if (!d) return `<div style="width:28px;height:20px;border-radius:3px;border:1px solid #333;opacity:${isActive?1:0.3}"></div>`;
+        if (!d) return `<div style="width:${boxW}px;height:${boxH}px;border-radius:4px;border:1px solid #333;opacity:${isActive?1:0.3}"></div>`;
         const c = dartBoxColor(d);
         const label = d.bust ? 'BUST' : formatDartLabel(d);
-        return `<div style="width:28px;height:20px;border-radius:3px;border:1px solid ${c};display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:10px;color:${c}">${label}</div>`;
+        return `<div style="width:${boxW}px;height:${boxH}px;border-radius:4px;border:1px solid ${c};display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:${fontSize}px;color:${c}">${label}</div>`;
       }).join('') +
     `</div>`;
   };
@@ -1152,18 +1284,18 @@ function renderTV() {
         const mc = medalColorOf(place);
         const members = state.players.filter(p => t.player_ids.includes(p.id));
         const teamRow = `<tr>
-          <td colspan="2" style="padding:8px 12px 3px;border-left:3px solid ${mc};background:${mc}11">
+          <td colspan="2" style="padding:10px 14px 6px;border-left:4px solid ${mc};background:${mc}18">
             <div style="display:flex;justify-content:space-between;align-items:baseline">
-              <div style="display:flex;align-items:baseline;gap:8px">
-                <span style="font-family:var(--font-display);font-size:13px;color:${mc}">${placeOrdinal(place)}</span>
-                <span style="font-family:var(--font-display);font-size:18px;color:${color}">${t.name || `Team ${i+1}`}</span>
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <span style="font-family:var(--font-display);font-size:24px;color:${mc}">${placeOrdinal(place)}</span>
+                <span style="font-family:var(--font-display);font-size:36px;color:${color}">${t.name || `Team ${i+1}`}</span>
               </div>
-              <span style="font-family:var(--font-display);font-size:24px;color:${color}">${t.score !== undefined ? t.score : ''}</span>
+              <span style="font-family:var(--font-display);font-size:42px;color:${color}">${t.score !== undefined ? t.score : ''}</span>
             </div>
           </td>
         </tr>`;
         const playerRows = members.map(p =>
-          `<tr><td style="padding-left:20px;padding-bottom:4px;color:var(--muted);font-size:13px">${p.name}</td><td></td></tr>`
+          `<tr><td style="padding-left:24px;padding-bottom:4px;font-family:var(--font-display);color:${color};font-size:22px;text-transform:uppercase;opacity:0.8">${p.name}</td><td></td></tr>`
         ).join('');
         return teamRow + playerRows;
       }).join('');
@@ -1184,16 +1316,15 @@ function renderTV() {
       table.innerHTML = ranked.map((p, i) => {
         const place = playerRanks[i].place;
         const mc = medalColorOf(place);
-        return `<tr style="border-left:3px solid ${mc};background:${mc}0d">
-          <td style="padding:6px 8px 6px 10px">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-family:var(--font-display);font-size:13px;color:${mc};min-width:28px">${placeOrdinal(place)}</span>
-              <div>
-                <div style="font-size:14px">${p.name}</div>
-              </div>
+        const pc = playerColorOf(p.id);
+        return `<tr style="border-left:4px solid ${mc};background:${mc}18">
+          <td style="padding:10px 10px 10px 14px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <span style="font-family:var(--font-display);font-size:24px;color:${mc};min-width:40px">${placeOrdinal(place)}</span>
+              <div style="font-family:var(--font-display);font-size:36px;color:${pc};text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div>
             </div>
           </td>
-          <td style="vertical-align:middle;padding-right:8px;font-family:var(--font-display);font-size:20px;color:${mc};white-space:nowrap">${formatScore(state.player_scores[p.id], mode)}</td>
+          <td style="vertical-align:middle;padding-right:14px;font-family:var(--font-display);font-size:42px;color:${mc};white-space:nowrap;text-align:right">${formatScore(state.player_scores[p.id], mode)}</td>
         </tr>`;
       }).join('');
     }
@@ -1203,32 +1334,38 @@ function renderTV() {
       const isActiveTeam = t.player_ids.includes(state.current_player_id);
       const members = state.players.filter(p => t.player_ids.includes(p.id));
       const teamRow = `<tr>
-        <td colspan="2" style="padding:8px 12px 3px;${isActiveTeam?`border-left:3px solid ${color};background:${color}11`:'padding-left:12px'}">
+        <td colspan="2" style="padding:6px 12px 3px;${isActiveTeam?`border-left:3px solid ${color};background:${color}11`:'padding-left:12px'}">
           <div style="display:flex;justify-content:space-between;align-items:baseline">
-            <span style="font-family:var(--font-display);font-size:18px;color:${color}">${t.name || `Team ${i+1}`}</span>
-            <span style="font-family:var(--font-display);font-size:24px;color:${color}">${t.score !== undefined ? t.score : ''}</span>
+            <span style="font-family:var(--font-display);font-size:28px;color:${color}">${t.name || `Team ${i+1}`}</span>
+            <span style="font-family:var(--font-display);font-size:28px;color:${color}">${t.score !== undefined ? t.score : ''}</span>
           </div>
         </td>
       </tr>`;
-      const playerRows = members.map(p =>
-        `<tr class="${p.id===state.current_player_id?'active-row':''}">
-          <td style="padding-left:20px;padding-bottom:6px">
-            <div style="color:var(--muted);font-size:13px">${p.name}</div>
-            ${miniDartBoxes(p.id)}
+      const playerRows = members.map(p => {
+        const isActive = p.id === state.current_player_id;
+        return `<tr class="${isActive?'active-row':''}">
+          <td colspan="2" style="padding:3px 16px ${isActive?6:3}px 20px">
+            <div style="font-family:var(--font-display);color:${color};font-size:24px;text-transform:uppercase;line-height:1;opacity:${isActive?1:0.7};text-align:center">${p.name}</div>
+            <div style="display:flex;justify-content:center;gap:6px;margin-top:5px">${miniDartBoxes(p.id, 44, 28, 14)}</div>
           </td>
-          <td></td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
       return teamRow + playerRows;
     }).join('');
   } else {
-    table.innerHTML = state.players.map(p => `
-      <tr class="${p.id === state.current_player_id ? 'active-row' : ''}">
-        <td style="padding-bottom:6px">
-          <div>${p.name}</div>
-          ${miniDartBoxes(p.id)}
+    table.innerHTML = state.players.map((p, i) => {
+      const pc = playerColorOf(p.id);
+      const isActive = p.id === state.current_player_id;
+      return `
+      <tr class="${isActive ? 'active-row' : ''}">
+        <td colspan="2" style="padding:8px 16px 6px 16px;${isActive?'border-left:3px solid '+pc:'border-left:3px solid transparent'}">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+            <div style="font-family:var(--font-display);font-size:40px;color:${pc};text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1">${p.name}</div>
+            <div style="font-family:var(--font-display);font-size:40px;color:${pc};white-space:nowrap;line-height:1;min-width:72px;text-align:right">${formatScore(state.player_scores[p.id], mode)}</div>
+          </div>
+          <div style="display:flex;justify-content:center;gap:6px;margin-top:6px;padding-bottom:2px">${miniDartBoxes(p.id)}</div>
         </td>
-        <td style="vertical-align:top;padding-top:6px">${formatScore(state.player_scores[p.id], mode)}</td>
-      </tr>`).join('');
+      </tr>`}).join('');
   }
 
 
@@ -1241,7 +1378,7 @@ function renderCricketTV(ds) {
   const marks = ds.cricket_marks || {};
   const globally_closed = ds.globally_closed || [];
   const teams = ds.teams;
-  const teamColors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+  const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
 
   let entities;
   if (teams && teams.length) {
@@ -1270,21 +1407,26 @@ function renderCricketTV(ds) {
     return eid === state.current_player_id;
   };
 
-  const half = Math.ceil(entities.length / 2);
-  const leftEntities = entities.slice(0, half);
-  const rightEntities = entities.slice(half);
-
   const markBarsHtml = (m, color) => {
     const count = parseInt(m || 0);
     return [0,1,2].map(i =>
-      `<div class="mark-bar${i<count?' lit':''}" style="width:48px;height:24px;border-radius:4px;${i<count?`background:${color};box-shadow:0 0 8px ${color}55`:''}"></div>`
+      `<div class="mark-bar${i<count?' lit':''}" style="width:72px;height:34px;border-radius:4px;${i<count?`background:${color};box-shadow:0 0 8px ${color}55`:''}"></div>`
     ).join('');
   };
 
-  const COL_WIDTH = '180px';
-  // rows: header | n0 | n1 | ... | score
-  const nRows = numbers.length;
-  const gridRows = `auto ${numbers.map(()=>'36px').join(' ')} auto`;
+  // Always interleave: E | N | E | N | E | N | E
+  // Main area ≈ 1500px, number cols are 60px each, 8px column-gap
+  // For n entities there are (n-1) number cols
+  const n = entities.length;
+  const NUM_COL_W = 48;
+  const GAP = 4;
+  const MAIN_W = 1436; // 1920 - 420 sidebar - 32*2 padding
+  const totalNumW = (n - 1) * (NUM_COL_W + GAP * 2);
+  const totalGapE = n * GAP * 2;
+  const colPx = Math.min(320, Math.floor((MAIN_W - totalNumW - totalGapE - 16) / n));
+  const COL_WIDTH = `${colPx}px`;
+
+  const gridRows = `auto ${numbers.map(()=>'52px').join(' ')} auto`;
 
   const medalColors = { 'medal-gold': '#f5a623', 'medal-silver': '#c0c0c0', 'medal-bronze': '#cd7f32' };
   const entityType = (teams && teams.length) ? 'team' : 'player';
@@ -1305,9 +1447,9 @@ function renderCricketTV(ds) {
       </div>`;
     }).join('');
     return `<div style="width:${COL_WIDTH};min-width:${COL_WIDTH};max-width:${COL_WIDTH};box-sizing:border-box;display:grid;grid-row:1/-1;grid-template-rows:subgrid;border-radius:10px;padding:8px 12px;${border}">
-      <div style="font-family:var(--font-display);font-size:24px;letter-spacing:1px;padding:4px 0 6px;color:${e.color};text-align:center;word-break:break-word;white-space:normal;line-height:1.1;align-self:center">${e.label}</div>
+      <div style="font-family:var(--font-display);font-size:40px;letter-spacing:1px;padding:6px 0 8px;color:${e.color};text-align:center;word-break:break-word;white-space:normal;line-height:1.1;align-self:center">${e.label}</div>
       ${rows}
-      <div style="font-family:var(--font-display);font-size:28px;color:${e.color};padding-top:8px;text-align:center;align-self:center">${e.score}</div>
+      <div style="font-family:var(--font-display);font-size:72px;color:${e.color};padding-top:8px;text-align:center;align-self:center;line-height:1">${e.score}</div>
     </div>`;
   };
 
@@ -1316,42 +1458,41 @@ function renderCricketTV(ds) {
       const isClosed = globally_closed.includes(n);
       const label = n === 25 ? 'BULL' : n;
       return `<div style="display:flex;align-items:center;justify-content:center;opacity:${isClosed?0.2:1}">
-        <span style="font-family:var(--font-display);font-size:${n===25?16:22}px;color:${isClosed?'var(--muted)':'var(--white)'};text-decoration:${isClosed?'line-through':'none'}">${label}</span>
+        <span style="font-family:var(--font-display);font-size:${n===25?20:28}px;color:${isClosed?'var(--muted)':'var(--white)'};text-decoration:${isClosed?'line-through':'none'}">${label}</span>
       </div>`;
     }).join('');
-    return `<div style="display:grid;grid-row:1/-1;grid-template-rows:subgrid;padding:8px 8px">
+    return `<div style="width:${NUM_COL_W}px;display:grid;grid-row:1/-1;grid-template-rows:subgrid;padding:8px 2px">
       <div></div>
       ${rows}
       <div></div>
     </div>`;
   };
 
-  const leftCols = leftEntities.map(e => entityColHtml(e)).join('');
-  const rightCols = rightEntities.map(e => entityColHtml(e)).join('');
-
-  const nLeft = leftEntities.length;
-  const nRight = rightEntities.length || 1;
+  // Always interleave number cols between every entity
+  const templateCols = entities.map((_, i) => i < n - 1 ? `${COL_WIDTH} ${NUM_COL_W}px` : COL_WIDTH).join(' ');
+  const cells = entities.map((e, i) =>
+    entityColHtml(e) + (i < n - 1 ? numberColHtml() : '')
+  ).join('');
 
   grid.style.display = 'block';
-  grid.innerHTML = `<div style="display:grid;grid-template-columns:repeat(${nLeft},${COL_WIDTH}) auto repeat(${nRight},${COL_WIDTH});grid-template-rows:${gridRows};column-gap:8px;justify-content:center;overflow-x:auto;padding:8px">
-    ${leftEntities.map(e => entityColHtml(e)).join('')}
-    ${numberColHtml()}
-    ${rightEntities.length ? rightEntities.map(e => entityColHtml(e)).join('') : `<div style="grid-row:1/-1;width:${COL_WIDTH}"></div>`}
+  grid.innerHTML = `<div style="display:grid;grid-template-columns:${templateCols};grid-template-rows:${gridRows};column-gap:${GAP}px;justify-content:center;overflow-x:auto;padding:8px">
+    ${cells}
   </div>`;
 }
 
 function renderX01TeamsTV(ds) {
   const grid = document.getElementById('tvPlayersGrid');
-  const teamColors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+  const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
   const dartsThrown = state.darts_this_turn.length;
 
   grid.style.display = '';
+  grid.style.gridTemplateColumns = `repeat(${ds.teams.length}, 1fr)`;
   grid.innerHTML = ds.teams.map((t, i) => {
     const color = teamColors[i % teamColors.length];
     const isActive = t.player_ids.includes(state.current_player_id);
     const members = state.players.filter(p => t.player_ids.includes(p.id));
     const score = t.score;
-    const co = t.checkout;
+    const co = normalizeCheckoutHint(t.checkout);
     const slots = [0,1,2].map(j =>
       `<div class="dart-slot ${j < dartsThrown && isActive ? 'thrown' : ''}"></div>`
     ).join('');
@@ -1411,7 +1552,7 @@ function renderCompanion() { return; // TV only
 
     // Checkout hint
     const coEl = document.getElementById('compCheckout');
-    const co = state.mode === 'x01' && ds.checkouts && ds.checkouts[state.current_player_id];
+    const co = state.mode === 'x01' && normalizeCheckoutHint(ds.checkouts && ds.checkouts[state.current_player_id]);
     coEl.innerHTML = co ? checkoutBoxesHtml(co) : '';
 
     // Dart slots
@@ -1423,7 +1564,7 @@ function renderCompanion() { return; // TV only
     const compTable = document.getElementById('compScoresTable');
     const ds2 = state.mode_display || {};
     if (['cricket','x01'].includes(state.mode) && ds2.teams && ds2.teams.length) {
-      const teamColors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+      const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
       const currentTeam = ds2.teams.find(t => t.player_ids.includes(state.current_player_id));
       compTable.innerHTML = ds2.teams.map((t, i) => {
         const isActive = t.team_id === currentTeam?.team_id;
@@ -1659,14 +1800,24 @@ function drawBoard(svgId, hits = []) {
 }
 
 // ── CHECKOUT BOXES ────────────────────────────────────────────────────────────
+// Normalize: strip S prefix, and when double_out is off collapse final double
+// into the previous dart if it fits a single segment.
+function normalizeCheckoutHint(hint) {
+  if (!hint) return null;
+  // Strip S prefix from singles (S20 → 20, SBull stays)
+  return hint.trim().split(/\s+/)
+    .map(d => d.startsWith('S') && !d.startsWith('SB') ? d.slice(1) : d)
+    .join(' ');
+}
+
 function checkoutBoxesHtml(hint) {
   if (!hint) return '';
   const darts = hint.trim().split(/\s+/);
   const boxes = darts.map(d => {
-    let cls = '';
+    let cls = 'single';
     if (d.startsWith('T')) cls = 'triple';
     else if (d.startsWith('D')) cls = 'double';
-    else if (d === 'Bull' || d === 'Bull25') cls = 'bull';
+    else if (d === 'Bull' || d === 'Bull25' || d === 'DBull') cls = 'bull';
     return `<span class="checkout-dart ${cls}">${d}</span>`;
   }).join('');
   return `<div class="checkout-boxes">${boxes}</div>`;
@@ -1969,11 +2120,13 @@ function renderModeOptions() {
     });
 
   const toggleHtml = (key, schema) => {
-    const def = schema.default === true || schema.default === 'true';
+    const isAtc = modeId === 'around_the_clock';
+    const atcForceTrue = isAtc && (key.includes('double') || key.includes('triple') || key.includes('skip'));
+    const def = atcForceTrue || schema.default === true || schema.default === 'true';
     _toggleState[key] = def;
     return '<div class="toggle-group">'
-      + '<button class="toggle-btn ' + (!def?'active':'') + '" data-toggle="' + key + '" data-value="false" onclick="setToggle(\'' + key + '\',false)">No</button>'
-      + '<button class="toggle-btn ' + (def?'active':'') + '" data-toggle="' + key + '" data-value="true" onclick="setToggle(\'' + key + '\',true)">Yes</button>'
+      + '<button class="toggle-btn ' + (!def?'active':'') + '" data-toggle="' + key + '" data-value="false" onclick="setToggle(\'' + key + '\',!_toggleState[\'' + key + '\'])">No</button>'
+      + '<button class="toggle-btn ' + (def?'active':'') + '" data-toggle="' + key + '" data-value="true" onclick="setToggle(\'' + key + '\',!_toggleState[\'' + key + '\'])">Yes</button>'
       + '</div>';
   };
 
@@ -2087,8 +2240,8 @@ function renderTeamsSection() {
     row.className = 'form-row';
     row.innerHTML = `<div class="form-label">Teams</div>
       <div class="toggle-group">
-        <button class="toggle-btn active" data-toggle="teams_enabled" data-value="false" onclick="setToggle('teams_enabled',false)">Off</button>
-        <button class="toggle-btn" data-toggle="teams_enabled" data-value="true" onclick="setToggle('teams_enabled',true)">On</button>
+        <button class="toggle-btn active" data-toggle="teams_enabled" data-value="false" onclick="setToggle('teams_enabled',!_toggleState['teams_enabled'])">Off</button>
+        <button class="toggle-btn" data-toggle="teams_enabled" data-value="true" onclick="setToggle('teams_enabled',!_toggleState['teams_enabled'])">On</button>
       </div>`;
     section.insertBefore(row, section.querySelector('div[style]') || section.firstChild);
     _toggleState['teams_enabled'] = false;
@@ -2113,7 +2266,7 @@ function renderTeams() {
   }
   while (teamNames.length < n) teamNames.push(`Team ${teamNames.length+1}`);
 
-  const colors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+  const colors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
   grid.innerHTML = `<div class="teams-grid" style="grid-template-columns: repeat(${Math.min(n,2)}, 1fr)">` +
     teamAssignments.map((team, i) => {
       const chips = team.map(pid => {
@@ -2273,6 +2426,135 @@ async function loadHistory() {
 }
 
 // ── DART FEED ─────────────────────────────────────────────────────────────────
+// ── TURN PANEL ────────────────────────────────────────────────────────────────
+function renderTurnPanel() {
+  const panel = document.getElementById('tvTurnPanel');
+  if (!panel) return;
+
+  if (!state || state.game_over) {
+    if (state && state.game_over) {
+      // Show winner in the now-throwing panel
+      const ds = state.mode_display || {};
+      const teams = ds.teams;
+      const wid = state.winner_id;
+      let winnerName = null;
+      let winnerColor = 'var(--primary)';
+      if (wid && teams && teams.length) {
+        const byTeamId = teams.find(t => t.team_id === wid);
+        if (byTeamId) { winnerName = byTeamId.name; }
+        else {
+          const byPlayer = teams.find(t => t.player_ids && t.player_ids.includes(wid));
+          if (byPlayer) winnerName = byPlayer.name;
+        }
+      }
+      if (!winnerName && wid && state.players) {
+        const wp = state.players.find(p => p.id === wid);
+        if (wp) { winnerName = wp.name; winnerColor = playerColorOf(wid); }
+      }
+      if (winnerName && teams && teams.length) {
+        const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
+        const idx = teams.findIndex(t => t.name === winnerName || t.player_ids?.includes(wid));
+        if (idx >= 0) winnerColor = teamColors[idx % teamColors.length];
+      }
+      panel.innerHTML = winnerName ? `
+        <div class="turn-now" style="border-color:#f5a623;border-width:2px;background:rgba(26,18,0,0.95);box-shadow:0 0 40px rgba(245,166,35,0.6),0 0 80px rgba(245,166,35,0.25),inset 0 0 30px rgba(245,166,35,0.08);text-align:center">
+          <div style="font-family:var(--font-mono);font-size:40px;letter-spacing:4px;color:#f5a623;opacity:0.8;text-transform:uppercase;margin-bottom:6px">🏆 Winner</div>
+          <div style="font-family:var(--font-display);font-size:120px;color:#f5a623;line-height:1;text-shadow:0 0 20px rgba(245,166,35,0.8)">${winnerName}</div>
+        </div>` : '';
+    } else {
+      panel.innerHTML = '';
+    }
+    return;
+  }
+
+  const players = state.players;
+  const cur = players.find(p => p.id === state.current_player_id);
+  if (!cur) return;
+
+  const ds = state.mode_display || {};
+  const teams = ds.teams;
+
+  const color = playerColorOf(cur.id);
+  const colorGlow = color.startsWith('#') ? color + '22' : 'rgba(0,135,81,0.1)';
+
+  // Dart slots for current player
+  const dartsThrown = (state.darts_this_turn || []).filter(d => d.player_id === cur.id).length;
+  const slots = [0,1,2].map(i =>
+    `<div style="width:36px;height:5px;border-radius:3px;background:${i < dartsThrown ? color : 'var(--border)'}"></div>`
+  ).join('');
+
+  // Use backend upcoming_players — already in correct turn order
+  let upcomingIds = (state.upcoming_players || []);
+  if (!upcomingIds.length) {
+    const curIdx = players.findIndex(p => p.id === cur.id);
+    for (let i = 1; i <= Math.min(4, players.length - 1); i++) {
+      upcomingIds.push(players[(curIdx + i) % players.length].id);
+    }
+  }
+
+  // For team games: reconstruct correct per-team next-member using turn history
+  if (teams && teams.length) {
+    // Find which team the current player is on
+    const curTeamIdx = teams.findIndex(t => t.player_ids.includes(cur.id));
+
+    // Use turn_order_history to find who threw last for each team
+    const turnHistory = state.turn_order_history || [];
+
+    const lastThrowerOfTeam = (teamIdx) => {
+      const team = teams[teamIdx];
+      if (teamIdx === curTeamIdx) return cur.id;
+      // Walk history backwards to find last player from this team
+      for (let i = turnHistory.length - 1; i >= 0; i--) {
+        if (team.player_ids.includes(turnHistory[i])) return turnHistory[i];
+      }
+      return null;
+    };
+
+    const nextMemberOfTeam = (teamIdx) => {
+      const team = teams[teamIdx];
+      if (team.player_ids.length === 1) return team.player_ids[0];
+      const last = lastThrowerOfTeam(teamIdx);
+      if (!last) return team.player_ids[0];
+      const lastIdx = team.player_ids.indexOf(last);
+      return team.player_ids[(lastIdx + 1) % team.player_ids.length];
+    };
+
+    // Build queue: next 3 teams in round-robin order, each showing their next member
+    upcomingIds = [];
+    for (let i = 1; i <= Math.min(3, teams.length); i++) {
+      const nextTeamIdx = (curTeamIdx + i) % teams.length;
+      upcomingIds.push(nextMemberOfTeam(nextTeamIdx));
+    }
+  }
+
+  // Deduplicate and exclude current
+  const seen = new Set([cur.id]);
+  const uniqueNext = upcomingIds
+    .filter(pid => { if (seen.has(pid)) return false; seen.add(pid); return true; })
+    .slice(0, 3)
+    .map(pid => players.find(p => p.id === pid))
+    .filter(Boolean);
+
+  const nextLabel = ['NEXT', '2ND', '3RD'];
+  const nextHtml = uniqueNext.map((p, i) => `
+    <div class="turn-next-item">
+      <span class="turn-next-pos">${nextLabel[i]}</span>
+      <span class="turn-next-name" style="color:${playerColorOf(p.id)}">${p.name}</span>
+    </div>`).join('');
+
+  panel.innerHTML = `
+    <div class="turn-panel-label">Now throwing</div>
+    <div class="turn-now" style="border-color:${color};background:${colorGlow}">
+      <div class="turn-now-name" style="color:${color}">${cur.name}</div>
+      <div class="turn-now-darts">${slots}</div>
+    </div>
+    ${uniqueNext.length ? `
+      <div class="turn-next">
+        <div class="turn-next-label">Up next</div>
+        ${nextHtml}
+      </div>` : ''}`;
+}
+
 let feedItems = [];
 
 function addDartToFeed(dart) {
@@ -2281,13 +2563,27 @@ function addDartToFeed(dart) {
 
   const feed = document.getElementById('tvDartsFeed');
   if (!feed) return;
+
+  const dartColor = (d) => {
+    if (d.bust)              return '#e63946';
+    if (d.ring === 'miss')   return '#555e6b';
+    if (d.ring === 'triple') return '#008751';
+    if (d.ring === 'double') return '#4a9eff';
+    if (d.ring === 'bullseye') return '#e63946';
+    if (d.ring === 'bull')   return '#f5a623';
+    return '#c8cdd4';
+  };
+
   feed.innerHTML = feedItems.map(d => {
-    const cls = d.ring === 'triple' ? 'triple' : d.ring === 'double' ? 'double' :
-                (d.ring === 'bull' || d.ring === 'bullseye') ? 'bull' :
-                d.ring === 'miss' ? 'miss' : '';
-    return `<div class="dart-entry ${cls}">
-      <div class="dart-entry-left"><strong>${d.player_name}</strong> — ${formatDartLabel(d)}</div>
-      <div class="dart-entry-score">${d.bust ? 'BUST' : d.scored}</div>
+    const c = dartColor(d);
+    const pc = playerColorOf(d.player_id);
+    const label = d.bust ? 'BUST' : formatDartLabel(d);
+    const scored = d.bust ? '' : d.scored;
+    const labelBox = `<div style="min-width:52px;height:28px;border-radius:4px;border:1px solid ${c};display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:17px;color:${c};padding:0 6px">${label}</div>`;
+    return `<div style="display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;padding:12px 16px;background:var(--card);border-radius:8px;border-left:3px solid ${c};animation:slideIn 0.3s ease">
+      <span style="font-family:var(--font-display);font-size:30px;color:${pc};text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.player_name}</span>
+      ${labelBox}
+      <span style="font-family:var(--font-display);font-size:32px;color:${c};min-width:36px;text-align:right">${scored}</span>
     </div>`;
   }).join('');
 }
@@ -2333,14 +2629,12 @@ function addHitMarker(segment, ring, playerId) {
 // scoreOf(id): returns comparable score value (used to detect ties)
 function computeRanks(sortedIds, scoreOf) {
   const result = [];
-  let place = 1;
   for (let i = 0; i < sortedIds.length; i++) {
     if (i > 0 && scoreOf(sortedIds[i]) === scoreOf(sortedIds[i - 1])) {
       result.push({ id: sortedIds[i], place: result[i - 1].place });
     } else {
-      result.push({ id: sortedIds[i], place });
+      result.push({ id: sortedIds[i], place: i + 1 });
     }
-    place = result[i].place + 1;
   }
   return result;
 }
@@ -2516,22 +2810,30 @@ function getMedalClass(id, type) {
 function showGameOver(payload) {
   const ds = state && state.mode_display || {};
   const teams = ds.teams;
+  const wid = payload.winner_id || (state && state.winner_id);
   let winnerName = null;
-  if (teams && teams.length) {
-    const wt = teams.find(t => t.team_id === payload.winner_id);
-    if (wt) winnerName = wt.name;
+  if (wid && teams && teams.length) {
+    // winner_id may be a team_id OR a player_id — try both
+    const byTeamId = teams.find(t => t.team_id === wid);
+    if (byTeamId) {
+      winnerName = byTeamId.name;
+    } else {
+      // winner_id is a player — find which team they're on
+      const byPlayer = teams.find(t => t.player_ids && t.player_ids.includes(wid));
+      if (byPlayer) winnerName = byPlayer.name;
+    }
   }
-  if (!winnerName && state && state.players) {
-    const wp = state.players.find(p => p.id === payload.winner_id);
+  if (!winnerName && wid && state && state.players) {
+    const wp = state.players.find(p => p.id === wid);
     if (wp) winnerName = wp.name;
   }
-  showAnnouncement(winnerName ? 'Game shot! ' + winnerName + ' wins!' : 'Game over!', 99999);
+  showAnnouncement(winnerName ? winnerName + ' wins!' : 'Game over!', 99999);
   renderCompanion();
 }
 
 // ── ANNOUNCEMENTS ─────────────────────────────────────────────────────────────
 let announcementTimer = null;
-function showAnnouncement(text) {
+function showAnnouncement(text, duration) {
   const el = document.getElementById('tvAnnouncement');
   if (!el) return;
   el.textContent = text;
@@ -2609,7 +2911,7 @@ async function init() {
   drawBoard('tvBoardSvg');
   scaleTvFrame();
   const current = await api('GET', '/game/state');
-  if (current && !current.detail) {
+  if (current && !current.detail && !current.game_over) {
     state = current;
     renderTV();
   }

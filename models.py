@@ -28,6 +28,10 @@ class OverrideRequest(BaseModel):
     reason: str = "Manual override"
 
 
+class PlayerColorRequest(BaseModel):
+    color: Optional[str] = None  # hex string e.g. "#e63946", or null to clear
+
+
 class AnnouncementEvent(BaseModel):
     text: str
     player_id: Optional[str] = None

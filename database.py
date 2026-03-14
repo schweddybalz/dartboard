@@ -67,19 +67,37 @@ class Database:
                     created_at  TEXT NOT NULL
                 );
             """)
+            # Migration: add color column if it doesn't exist yet
+            try:
+                conn.execute("ALTER TABLE players ADD COLUMN color TEXT")
+            except Exception:
+                pass  # Column already exists
 
     # ── Players ─────────────────────────────────────────────────────────────
 
+    _PALETTE = [
+        '#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623',
+        '#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d',
+        '#7cb518','#ff9a3c',
+    ]
+
     def create_player(self, name: str, avatar_url: Optional[str] = None) -> dict:
+        import random
+        # Pick a color not already used
+        with self._conn() as conn:
+            used = {r[0] for r in conn.execute("SELECT color FROM players WHERE color IS NOT NULL").fetchall()}
+        available = [c for c in self._PALETTE if c not in used]
+        color = random.choice(available if available else self._PALETTE)
         player = {
             "id": str(uuid.uuid4()),
             "name": name,
             "avatar_url": avatar_url,
+            "color": color,
             "created_at": datetime.utcnow().isoformat(),
         }
         with self._conn() as conn:
             conn.execute(
-                "INSERT INTO players VALUES (:id, :name, :avatar_url, :created_at)",
+                "INSERT INTO players (id, name, avatar_url, color, created_at) VALUES (:id, :name, :avatar_url, :color, :created_at)",
                 player
             )
         return player
@@ -97,6 +115,10 @@ class Database:
     def update_player_avatar(self, player_id: str, avatar_url: str):
         with self._conn() as conn:
             conn.execute("UPDATE players SET avatar_url=? WHERE id=?", (avatar_url, player_id))
+
+    def update_player_color(self, player_id: str, color: Optional[str]):
+        with self._conn() as conn:
+            conn.execute("UPDATE players SET color=? WHERE id=?", (color, player_id))
 
     def delete_player(self, player_id: str) -> bool:
         with self._conn() as conn:

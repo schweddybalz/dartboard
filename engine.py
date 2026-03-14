@@ -106,7 +106,7 @@ class GameEngine:
         return self._public_state()
 
     def get_state(self) -> Optional[dict]:
-        if not self._state:
+        if not self._state or self._state.get("game_over"):
             return None
         return self._public_state()
 
@@ -256,6 +256,7 @@ class GameEngine:
             "game_id": s["game_id"],
             "mode": s["mode"],
             "mode_name": s["mode_name"],
+            "options": s.get("options", {}),
             "game_over": s["game_over"],
             "winner_id": s["winner_id"],
             "current_player_id": s["players"][s["current_player_idx"]]["id"],
@@ -264,9 +265,38 @@ class GameEngine:
             "darts_this_turn": s["darts_this_turn"],
             "player_scores": s["player_scores"],
             "players": s["players"],
+            "upcoming_players": self._upcoming_players(s),
+            "turn_order_history": [t["player_id"] for t in s.get("turn_history", [])][-20:],
             "mode_display": mode_display,
             "last_turn_darts": self._last_turn_darts(s),
         }
+
+    def _upcoming_players(self, s: dict) -> list:
+        """Return next 4 player IDs after the current one, in turn order.
+        Asks the mode instance if it can provide the sequence (team-aware),
+        otherwise falls back to walking the players array."""
+        if self._mode_instance and hasattr(self._mode_instance, "upcoming_players"):
+            try:
+                result = self._mode_instance.upcoming_players(s)
+                if result:
+                    return result[:4]
+            except Exception:
+                pass
+
+        players = s["players"]
+        n = len(players)
+        if n <= 1:
+            return []
+        cur_idx = s["current_player_idx"]
+        upcoming = []
+        for i in range(1, n + 1):
+            idx = (cur_idx + i) % n
+            pid = players[idx]["id"]
+            if pid not in upcoming:
+                upcoming.append(pid)
+            if len(upcoming) >= 4:
+                break
+        return upcoming
 
     def _last_turn_darts(self, s: dict) -> dict:
         """Return {player_id: [darts]} for the most recent completed turn per player."""

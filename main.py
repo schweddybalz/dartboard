@@ -24,7 +24,7 @@ from fastapi.responses import FileResponse
 from engine import GameEngine
 from models import (
     NewGameRequest, DartRequest, OverrideRequest,
-    NewPlayerRequest, AnnouncementEvent
+    NewPlayerRequest, AnnouncementEvent, PlayerColorRequest
 )
 from database import Database
 
@@ -124,6 +124,11 @@ async def upload_avatar(player_id: str, file: UploadFile = File(...)):
     url = f"/uploads/{filename}"
     db.update_player_avatar(player_id, url)
     return {"avatar_url": url}
+
+@app.post("/players/{player_id}/color")
+async def set_player_color(player_id: str, req: PlayerColorRequest):
+    db.update_player_color(player_id, req.color)
+    return {"color": req.color}
 
 @app.get("/players/{player_id}/stats")
 def player_stats(player_id: str):

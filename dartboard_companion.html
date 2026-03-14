@@ -562,7 +562,7 @@
     flex-shrink: 0;
   }
   .player-row-avatar img { width: 100%; height: 100%; object-fit: cover; }
-  .player-row-name { flex: 1; font-size: 15px; font-weight: 500; }
+  .player-row-name { flex: 1; font-size: 15px; font-weight: 500; text-transform: uppercase; }
   .player-row-actions { display: flex; gap: 6px; }
 
   /* Selected players for game */
@@ -681,11 +681,27 @@
 
   /* ── PLAYER POOL (setup) ─────────────────────────── */
   .player-pool { display:flex; flex-wrap:wrap; gap:6px; min-height:36px; }
-  .pool-chip { display:flex; align-items:center; gap:5px; padding:5px 10px 5px 8px; background:var(--primary-glow); border:1px solid var(--primary-dim); border-radius:20px; font-size:13px; color:var(--white); cursor:grab; user-select:none; transition:opacity 0.15s,box-shadow 0.15s; }
+  .pool-chip { display:flex; align-items:center; gap:5px; padding:5px 10px 5px 8px; background:var(--primary-glow); border:1px solid var(--primary-dim); border-radius:20px; font-size:13px; color:var(--white); cursor:grab; user-select:none; transition:opacity 0.15s,box-shadow 0.15s; text-transform:uppercase; }
   .pool-chip:active { cursor:grabbing; }
   .pool-chip.dragging { opacity:0.4; }
   .pool-chip button { background:none; border:none; color:var(--primary); cursor:pointer; font-size:15px; line-height:1; padding:0; }
   .pool-chip.unassigned { background: rgba(255,255,255,0.04); border-color: var(--border); color: var(--muted); }
+
+  /* ── COLOR PICKER POPOVER ────────────────────────── */
+  .color-picker-popover {
+    position: fixed;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    z-index: 9999;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    max-width: 240px;
+  }
 
   /* ── TEAMS GRID ──────────────────────────────────── */
   .teams-grid { display:grid; gap:10px; }
@@ -698,7 +714,7 @@
 
 
   .scores-table { width: 100%; border-collapse: collapse; }
-  .scores-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .scores-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; text-transform: uppercase; }
   .scores-table td:last-child { text-align: right; font-family: var(--font-display); font-size: 20px; color: var(--primary); }
   .scores-table tr:last-child td { border-bottom: none; }
   .scores-table tr.active-row td { background: var(--primary-glow); }
@@ -892,7 +908,7 @@
         </div>
         <!-- Teams UI (shown when teams toggled on for cricket) -->
         <div id="teamsSection" style="display:none">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div id="teamsHeader" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
             <div class="form-label" style="margin:0">Teams</div>
             <div style="display:flex;gap:8px;align-items:center">
               <select class="form-input" id="numTeams" style="width:auto;padding:4px 8px" onchange="renderTeams()">
@@ -991,7 +1007,22 @@ function handleEvent(event, payload) {
     showAnnouncement(payload.text);
   }
   if (event === 'game_ended') {
+    const wasTeamGame = state && state.mode_display && state.mode_display.teams && state.mode_display.teams.length;
     state = null;
+    if (wasTeamGame) {
+      // Keep teams on for rematch — assignments and toggle stay as-is
+    } else {
+      teamAssignments = [];
+      teamNames = [];
+      _toggleState['teams_enabled'] = false;
+      document.querySelectorAll('[data-toggle="teams_enabled"]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.value === 'false');
+      });
+      const th = document.getElementById('teamsHeader');
+      const tg = document.getElementById('teamsGrid');
+      if (th) th.style.display = 'none';
+      if (tg) tg.innerHTML = '';
+    }
     renderAll();
   }
 }
@@ -1182,7 +1213,7 @@ function renderTV() { return; // Companion only
 
   // Scores table (sidebar)
   const table = document.getElementById('tvScoresTable');
-  const teamColors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+  const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
 
   const dartBoxColor = (d) => {
     if (!d) return null;
@@ -1327,7 +1358,7 @@ function renderCricketTV(ds) {
   const marks = ds.cricket_marks || {};
   const globally_closed = ds.globally_closed || [];
   const teams = ds.teams;
-  const teamColors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+  const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
 
   let entities;
   if (teams && teams.length) {
@@ -1428,7 +1459,7 @@ function renderCricketTV(ds) {
 
 function renderX01TeamsTV(ds) {
   const grid = document.getElementById('tvPlayersGrid');
-  const teamColors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+  const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
   const dartsThrown = state.darts_this_turn.length;
 
   grid.style.display = '';
@@ -1508,7 +1539,7 @@ function renderCompanion() {
     const compTable = document.getElementById('compScoresTable');
     const ds2 = state.mode_display || {};
     if (['cricket','x01'].includes(state.mode) && ds2.teams && ds2.teams.length) {
-      const teamColors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+      const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
       const currentTeam = ds2.teams.find(t => t.player_ids.includes(state.current_player_id));
       compTable.innerHTML = ds2.teams.map((t, i) => {
         const isActive = t.team_id === currentTeam?.team_id;
@@ -1535,6 +1566,7 @@ function renderCompanion() {
     throwPanel.style.display = 'none';
     scoresPanel.style.display = 'none';
     setupPanel.style.display = 'block';
+    renderPlayerPool();
   }
 }
 
@@ -1809,9 +1841,22 @@ async function nextTurn() {
 
 async function endGame() {
   if (!confirm('End the current game?')) return;
+  const wasTeamGame = state && state.mode_display && state.mode_display.teams && state.mode_display.teams.length;
   await api('POST', '/game/end');
   state = null;
   dartHits = {};
+  if (!wasTeamGame) {
+    teamAssignments = [];
+    teamNames = [];
+    _toggleState['teams_enabled'] = false;
+    document.querySelectorAll('[data-toggle="teams_enabled"]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.value === 'false');
+    });
+    const th = document.getElementById('teamsHeader');
+    const tg = document.getElementById('teamsGrid');
+    if (th) th.style.display = 'none';
+    if (tg) tg.innerHTML = '';
+  }
   renderAll();
 }
 
@@ -1848,17 +1893,67 @@ function renderPlayers() {
       ? '<img src="' + API + p.avatar_url + '">'
       : '<span style="font-family:var(--font-display);font-size:22px;color:#fff;background:' + getAvatarColor(p.name) + ';width:100%;height:100%;display:flex;align-items:center;justify-content:center;border-radius:50%"><span style="transform:translateY(8%);display:block">' + getInitial(p.name) + '</span></span>';
     const sn = p.name.replace(/'/g, '&#39;');
+    const pc = p.color || null;
+    const inGame = selectedGamePlayers.includes(p.id);
     return '<div class="player-row">'
-      + '<div class="player-row-avatar">' + av + '</div>'
-      + '<div class="player-row-name">' + p.name + '</div>'
+      + '<div class="player-row-avatar" style="border:3px solid ' + (pc || 'var(--border)') + '">' + av + '</div>'
+      + '<div class="player-row-name" style="color:' + (pc || 'var(--white)') + '">' + p.name + '</div>'
       + '<div class="player-row-actions">'
       + '<label class="btn btn-secondary btn-sm" style="cursor:pointer">'
       + '\u{1F4F7} <input type="file" accept="image/*" style="display:none" onchange="uploadAvatar(\'' + p.id + '\', this)">'
       + '</label>'
-      + '<button class="btn btn-secondary btn-sm" onclick="addPlayerToGame(\'' + p.id + '\')">+ Add</button>'
+      + (inGame
+        ? '<button class="btn btn-sm" style="border-color:var(--primary);color:var(--primary);min-width:36px" onclick="removePlayerFromGame(\'' + p.id + '\')">−</button>'
+        : '<button class="btn btn-secondary btn-sm" style="min-width:36px" onclick="addPlayerToGame(\'' + p.id + '\')">+</button>')
       + '<button class="btn btn-sm" style="border-color:var(--red);color:var(--red);opacity:0.6" onclick="deletePlayer(\'' + p.id + '\', this.dataset.name)" data-name="' + sn + '">&#x2715;</button>'
       + '</div></div>';
   }).join('');
+}
+
+async function setPlayerColor(playerId, color) {
+  await api('POST', `/players/${playerId}/color`, { color });
+  closeColorPicker();
+  await loadPlayers();
+  renderPlayerPool();
+}
+
+function openColorPicker(playerId, chipEl) {
+  closeColorPicker();
+  const palette = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
+  const usedColors = new Set(
+    players
+      .filter(p => p.id !== playerId && selectedGamePlayers.includes(p.id) && p.color)
+      .map(p => p.color)
+  );
+  const p = players.find(pl => pl.id === playerId);
+  const currentColor = p && p.color;
+
+  const pop = document.createElement('div');
+  pop.className = 'color-picker-popover';
+  pop.id = 'colorPickerPopover';
+
+  palette.forEach(c => {
+    const isMine = currentColor === c;
+    const takenByOther = usedColors.has(c) && !isMine;
+    const swatch = document.createElement('div');
+    swatch.style.cssText = `width:26px;height:26px;border-radius:50%;background:${c};cursor:${takenByOther?'not-allowed':'pointer'};flex-shrink:0;border:2px solid ${isMine?'#fff':'transparent'};opacity:${takenByOther?0.25:1}`;
+    if (!takenByOther) swatch.onclick = (e) => { e.stopPropagation(); setPlayerColor(playerId, c); };
+    pop.appendChild(swatch);
+  });
+
+  // Position below the chip
+  document.body.appendChild(pop);
+  const rect = chipEl.getBoundingClientRect();
+  pop.style.top = (rect.bottom + 6) + 'px';
+  pop.style.left = Math.min(rect.left, window.innerWidth - 260) + 'px';
+
+  setTimeout(() => document.addEventListener('click', closeColorPicker, { once: true }), 0);
+}
+
+function closeColorPicker() {
+  const pop = document.getElementById('colorPickerPopover');
+  if (pop) pop.remove();
+  document.removeEventListener('click', closeColorPicker);
 }
 
 async function deletePlayer(playerId, playerName) {
@@ -1885,7 +1980,7 @@ function renderPlayerCombo(filter) {
         : `<span style="width:24px;height:24px;border-radius:50%;background:${getAvatarColor(p.name)};font-family:var(--font-display);font-size:14px;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${getInitial(p.name)}</span>`;
       return `<div class="player-combo-item" data-id="${p.id}" data-name="${p.name}"
         onmousedown="addPlayerToGame('${p.id}');closePlayerCombo()"
-        style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;font-size:14px">
+        style="display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;font-size:14px;text-transform:uppercase">
         ${av}<span>${p.name}</span></div>`;
     }).join('');
   }
@@ -2059,11 +2154,13 @@ function renderModeOptions() {
     });
 
   const toggleHtml = (key, schema) => {
-    const def = schema.default === true || schema.default === 'true';
+    const isAtc = modeId === 'around_the_clock';
+    const atcForceTrue = isAtc && (key.includes('double') || key.includes('triple') || key.includes('skip'));
+    const def = atcForceTrue || schema.default === true || schema.default === 'true';
     _toggleState[key] = def;
     return '<div class="toggle-group">'
-      + '<button class="toggle-btn ' + (!def?'active':'') + '" data-toggle="' + key + '" data-value="false" onclick="setToggle(\'' + key + '\',false)">No</button>'
-      + '<button class="toggle-btn ' + (def?'active':'') + '" data-toggle="' + key + '" data-value="true" onclick="setToggle(\'' + key + '\',true)">Yes</button>'
+      + '<button class="toggle-btn ' + (!def?'active':'') + '" data-toggle="' + key + '" data-value="false" onclick="setToggle(\'' + key + '\',!_toggleState[\'' + key + '\'])">No</button>'
+      + '<button class="toggle-btn ' + (def?'active':'') + '" data-toggle="' + key + '" data-value="true" onclick="setToggle(\'' + key + '\',!_toggleState[\'' + key + '\'])">Yes</button>'
       + '</div>';
   };
 
@@ -2142,11 +2239,14 @@ function renderPlayerPool() {
     selectedGamePlayers.map(id => {
       const p = players.find(pl => pl.id === id);
       if (!p) return '';
-      return `<div class="pool-chip" draggable="true"
+      const pc = p.color;
+      const chipStyle = pc ? `border-color:${pc};color:${pc};background:${pc}22` : '';
+      return `<div class="pool-chip" draggable="true" ${chipStyle ? `style="${chipStyle}"` : ''}
         ondragstart="onDragStart(event,'${id}')"
-        id="chip-${id}">
+        id="chip-${id}"
+        onclick="openColorPicker('${id}', this)">
         ${chipAvatarHtml(p)} ${p.name}
-        <button onclick="removePlayerFromGame('${id}')">×</button>
+        <button onclick="event.stopPropagation();removePlayerFromGame('${id}')">×</button>
       </div>`;
     }).join('') + `</div>`;
 }
@@ -2177,8 +2277,8 @@ function renderTeamsSection() {
     row.className = 'form-row';
     row.innerHTML = `<div class="form-label">Teams</div>
       <div class="toggle-group">
-        <button class="toggle-btn active" data-toggle="teams_enabled" data-value="false" onclick="setToggle('teams_enabled',false)">Off</button>
-        <button class="toggle-btn" data-toggle="teams_enabled" data-value="true" onclick="setToggle('teams_enabled',true)">On</button>
+        <button class="toggle-btn active" data-toggle="teams_enabled" data-value="false" onclick="setToggle('teams_enabled',!_toggleState['teams_enabled'])">Off</button>
+        <button class="toggle-btn" data-toggle="teams_enabled" data-value="true" onclick="setToggle('teams_enabled',!_toggleState['teams_enabled'])">On</button>
       </div>`;
     section.insertBefore(row, section.querySelector('div[style]') || section.firstChild);
     _toggleState['teams_enabled'] = false;
@@ -2190,7 +2290,7 @@ function renderTeamsSection() {
 function renderTeams() {
   const active = _toggleState['teams_enabled'];
   const grid = document.getElementById('teamsGrid');
-  const header = document.querySelector('#teamsSection > div[style]');
+  const header = document.getElementById('teamsHeader');
   if (header) header.style.display = active ? 'flex' : 'none';
   if (!grid) return;
   if (!active) { grid.innerHTML = ''; return; }
@@ -2203,7 +2303,7 @@ function renderTeams() {
   }
   while (teamNames.length < n) teamNames.push(`Team ${teamNames.length+1}`);
 
-  const colors = ['#2862A5', '#5C2D91', '#00b4a0', '#e63946'];
+  const colors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
   grid.innerHTML = `<div class="teams-grid" style="grid-template-columns: repeat(${Math.min(n,2)}, 1fr)">` +
     teamAssignments.map((team, i) => {
       const chips = team.map(pid => {
@@ -2258,6 +2358,7 @@ function onDropTeam(event, teamIdx) {
 
 function addPlayerToGame(playerId) {
   if (!playerId || selectedGamePlayers.includes(playerId)) return;
+  if (selectedGamePlayers.length >= 8) return;
   selectedGamePlayers.push(playerId);
   if (_toggleState['teams_enabled'] && teamAssignments.length) {
     const smallest = teamAssignments.reduce((a, t, i) => t.length < teamAssignments[a].length ? i : a, 0);
@@ -2267,6 +2368,7 @@ function addPlayerToGame(playerId) {
   easyAssignments.normal.push(playerId);
   renderEasyZones();
   renderPlayerPool();
+  renderPlayers();
   const spi = document.getElementById('setupPlayerInput'); if (spi) { spi.value=''; closePlayerCombo(); }
 }
 
@@ -2278,6 +2380,7 @@ function removePlayerFromGame(playerId) {
   renderPlayerPool();
   renderTeams();
   renderEasyZones();
+  renderPlayers();
 }
 
 async function startGame() {
@@ -2329,16 +2432,15 @@ async function _startGame() {
     state = result;
     dartHits = {};
     // Keep selectedGamePlayers so the same group doesn't need re-adding next game
-    teamAssignments = [];
-    teamNames = [];
     easyAssignments = { normal: [...selectedGamePlayers], easy: [] };
     renderAll();
     switchView('tv');
-    // Reset teams toggle after switching view so any DOM errors don't block the game starting
-    _toggleState['teams_enabled'] = false;
-    document.querySelectorAll('[data-toggle="teams_enabled"]').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.value === 'false');
-    });
+    // Only reset teams if this wasn't a team game
+    if (!_toggleState['teams_enabled']) {
+      teamAssignments = [];
+      teamNames = [];
+    }
+    // teams_enabled stays as-is — if it was a team game it remains On for rematch
   } else {
     alert(result?.detail || 'Failed to start game');
   }
@@ -2685,7 +2787,7 @@ async function init() {
   selectRing('single');
 
   const current = await api('GET', '/game/state');
-  if (current && !current.detail) {
+  if (current && !current.detail && !current.game_over) {
     state = current;
     renderCompanion();
   }
