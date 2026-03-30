@@ -24,11 +24,15 @@ class LimboMode(BaseMode):
         self.darts_per_turn = options.get("darts_per_turn", 3)
         self._lives = {p["id"]: self.starting_lives for p in players}
         self._eliminated = {p["id"]: False for p in players}
+        self._elimination_order = []   # first eliminated = index 0
         self._turn_total = {p["id"]: 0 for p in players}
         self._current_bar = self.starting_bar
 
     def initial_scores(self):
         return {p["id"]: self.starting_lives for p in self.players}
+
+    def is_player_eliminated(self, pid):
+        return self._eliminated.get(pid, False)
 
     def on_dart(self, state, player, segment, ring, raw_score):
         pid = player["id"]
@@ -62,13 +66,28 @@ class LimboMode(BaseMode):
         self._turn_total[pid] = 0
 
         if turn_score >= self._current_bar:
-            # Lose a life, bar resets
+            # Lose a life
             self._lives[pid] = max(0, self._lives[pid] - 1)
             scores[pid] = self._lives[pid]
-            self._current_bar = self.starting_bar
 
             if self._lives[pid] == 0:
                 self._eliminated[pid] = True
+                self._elimination_order.append(pid)
+                # Check if game is now over (one player left)
+                alive = [p for p, elim in self._eliminated.items() if not elim]
+                if len(alive) <= 1:
+                    # Game ends — no bar reset
+                    winner_player = next((pl for pl in state["players"] if pl["id"] == (alive[0] if alive else None)), None)
+                    winner_label = winner_player["name"] if winner_player else "Last player"
+                    return {
+                        "player_scores": scores,
+                        "scored": dart_value,
+                        "advance_turn": True,
+                        "message": f"{player['name']} scored {turn_score} — ELIMINATED! Game over!",
+                        "announcement": f"{player['name']} hit the bar with {turn_score} — out of lives! {winner_label} wins!",
+                    }
+                # Mid-game elimination — bar resets
+                self._current_bar = self.starting_bar
                 return {
                     "player_scores": scores,
                     "scored": dart_value,
@@ -76,6 +95,9 @@ class LimboMode(BaseMode):
                     "message": f"{player['name']} scored {turn_score} — ELIMINATED!",
                     "announcement": f"{player['name']} hit the bar with {turn_score}! Out of lives — eliminated! Bar resets to {self.starting_bar}.",
                 }
+
+            # Lost a life but still alive — bar resets
+            self._current_bar = self.starting_bar
             return {
                 "player_scores": scores,
                 "scored": dart_value,
@@ -110,6 +132,7 @@ class LimboMode(BaseMode):
             "lives": self._lives,
             "starting_lives": self.starting_lives,
             "eliminated": self._eliminated,
+            "elimination_order": self._elimination_order,
             "turn_totals": self._turn_total,
         }
 
@@ -118,10 +141,18 @@ class LimboMode(BaseMode):
         self._turn_total[pid] = 0
 
     def restore_state(self, state):
-        self._lives = {p["id"]: self.starting_lives for p in state["players"]}
-        self._eliminated = {p["id"]: False for p in state["players"]}
+        scores = state.get("player_scores", {})
+        self._lives = {p["id"]: scores.get(p["id"], self.starting_lives) for p in state["players"]}
+        self._eliminated = {p["id"]: self._lives[p["id"]] == 0 for p in state["players"]}
+        self._elimination_order = [p["id"] for p in state["players"] if self._eliminated[p["id"]]]
         self._turn_total = {p["id"]: 0 for p in state["players"]}
         self._current_bar = self.starting_bar
+        for turn in reversed(state.get("turn_history", [])):
+            darts = turn.get("darts", [])
+            turn_total = sum(d.get("scored", 0) for d in darts)
+            if turn_total < self.starting_bar:
+                self._current_bar = turn_total if turn_total > 0 else self.starting_bar
+                break
 
 
 MODE_CLASS = LimboMode

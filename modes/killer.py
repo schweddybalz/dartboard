@@ -196,17 +196,21 @@ class KillerMode(BaseMode):
         # Self-hit penalty
         if target_id == pid:
             if not self.no_life_recovery and hits > 0:
-                # Hitting own number as killer: lose life
+                # Hitting own number as killer: lose life but cannot self-eliminate
                 self._lives[pid] = max(0, self._lives[pid] - hits)
                 scores[pid] = self._lives[pid]
                 if self._lives[pid] < self.starting_lives:
                     self._is_killer[pid] = False  # lose Killer status
                 if self._lives[pid] == 0:
-                    self._eliminated[pid] = True
+                    msg = f"Self-hit! {player['name']} is on 0 life — one hit eliminates them!"
+                    announcement = msg
+                else:
+                    msg = f"Self-hit! {player['name']} loses {hits} Life ({self._lives[pid]} left)"
+                    announcement = f"Oops! {player['name']} hit their own number and loses Killer status!"
                 return {
                     "player_scores": scores, "scored": 0,
-                    "message": f"Self-hit! {player['name']} loses {hits} Life ({self._lives[pid]} left)",
-                    "announcement": f"Oops! {player['name']} hit their own number and loses Killer status!",
+                    "message": msg,
+                    "announcement": announcement,
                 }
             return {"player_scores": scores, "scored": 0, "message": "Self-hit (no effect)"}
 

@@ -170,7 +170,11 @@ class GameEngine:
         # Check win condition
         if self._mode_instance.is_game_over(state):
             state["game_over"] = True
-            state["winner_id"] = result.get("winner_id", current_player["id"])
+            # is_game_over may have already set winner_id (e.g. Killer sets it
+            # to the last survivor, not the self-eliminating current player).
+            # Only fall back if the mode didn't already set it.
+            if not state.get("winner_id"):
+                state["winner_id"] = result.get("winner_id", current_player["id"])
             self.db.end_game(state["game_id"], state["winner_id"], self._public_state())
 
         # Advance turn after 3 darts or bust or mode says so

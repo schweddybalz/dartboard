@@ -713,6 +713,58 @@
 
 
 
+  /* ── AVATAR CROP MODAL ───────────────────────────── */
+  #avatarCropModal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0,0,0,0.92);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    padding: 24px;
+  }
+  #avatarCropModal.open { display: flex; }
+  .crop-title {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .crop-viewport {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 3px solid var(--primary);
+    box-shadow: 0 0 40px rgba(0,135,81,0.4);
+    touch-action: none;
+    cursor: grab;
+    flex-shrink: 0;
+  }
+  .crop-viewport:active { cursor: grabbing; }
+  #cropImg {
+    position: absolute;
+    transform-origin: 0 0;
+    user-select: none;
+    pointer-events: none;
+  }
+  .crop-hint {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 1px;
+  }
+  .crop-actions {
+    display: flex;
+    gap: 12px;
+  }
+
   .scores-table { width: 100%; border-collapse: collapse; }
   .scores-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; text-transform: uppercase; }
   .scores-table td:last-child { text-align: right; font-family: var(--font-display); font-size: 20px; color: var(--primary); }
@@ -1489,7 +1541,7 @@ function renderX01TeamsTV(ds) {
           const isThisThrower = p.id === state.current_player_id;
           const avatarColor = getAvatarColor(p.name);
           const avatarInner = p.avatar_url
-            ? `<img src="${API}${p.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+            ? `<img src="${avatarSrc(p.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
             : `<span style="font-family:var(--font-display);font-size:22px;color:#fff;background:${avatarColor};width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center"><span style="transform:translateY(8%);display:block">${getInitial(p.name)}</span></span>`;
           const firstName = p.name.split(' ')[0];
           return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:70px;flex-shrink:0">
@@ -1890,7 +1942,7 @@ function renderPlayers() {
   }
   list.innerHTML = players.map(p => {
     const av = p.avatar_url
-      ? '<img src="' + API + p.avatar_url + '">'
+      ? '<img src="' + avatarSrc(p.avatar_url) + '">'
       : '<span style="font-family:var(--font-display);font-size:22px;color:#fff;background:' + getAvatarColor(p.name) + ';width:100%;height:100%;display:flex;align-items:center;justify-content:center;border-radius:50%"><span style="transform:translateY(8%);display:block">' + getInitial(p.name) + '</span></span>';
     const sn = p.name.replace(/'/g, '&#39;');
     const pc = p.color || null;
@@ -1900,7 +1952,7 @@ function renderPlayers() {
       + '<div class="player-row-name" style="color:' + (pc || 'var(--white)') + '">' + p.name + '</div>'
       + '<div class="player-row-actions">'
       + '<label class="btn btn-secondary btn-sm" style="cursor:pointer">'
-      + '\u{1F4F7} <input type="file" accept="image/*" style="display:none" onchange="uploadAvatar(\'' + p.id + '\', this)">'
+      + '\u{1F4F7} <input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleAvatarFile(\'' + p.id + '\', this)">'
       + '</label>'
       + (inGame
         ? '<button class="btn btn-sm" style="border-color:var(--primary);color:var(--primary);min-width:36px" onclick="removePlayerFromGame(\'' + p.id + '\')">−</button>'
@@ -1976,7 +2028,7 @@ function renderPlayerCombo(filter) {
   } else {
     list.innerHTML = matches.map((p, i) => {
       const av = p.avatar_url
-        ? `<img src="${API}${p.avatar_url}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+        ? `<img src="${avatarSrc(p.avatar_url)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0">`
         : `<span style="width:24px;height:24px;border-radius:50%;background:${getAvatarColor(p.name)};font-family:var(--font-display);font-size:14px;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${getInitial(p.name)}</span>`;
       return `<div class="player-combo-item" data-id="${p.id}" data-name="${p.name}"
         onmousedown="addPlayerToGame('${p.id}');closePlayerCombo()"
@@ -2045,6 +2097,13 @@ async function createPlayer() {
     input.value = '';
     await loadPlayers();
   }
+}
+
+function handleAvatarFile(playerId, input) {
+  const file = input.files[0];
+  if (!file) return;
+  // Reset value so the same file can trigger change again next time
+  openCropModal(playerId, input, file);
 }
 
 async function uploadAvatar(playerId, input) {
@@ -2596,7 +2655,7 @@ function renderPodium() {
     const fontSize = rank === 0 ? 36 : 26;
     const nameSize = rank === 0 ? 22 : 16;
     const av = p.avatar_url
-      ? '<img src="' + API + p.avatar_url + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;border:3px solid ' + color + '">'
+      ? '<img src="' + avatarSrc(p.avatar_url) + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;border:3px solid ' + color + '">'
       : '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + getAvatarColor(p.name) + ';display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:' + fontSize + 'px;color:#fff;border:3px solid ' + color + '">' + getInitial(p.name) + '</div>';
     return '<div class="podium-slot">'
       + av
@@ -2630,7 +2689,7 @@ function renderPodium() {
       const place = placeOf(p);
       const mc = pcOf(place);
       const av = p.avatar_url
-        ? '<img src="' + API + p.avatar_url + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover">'
+        ? '<img src="' + avatarSrc(p.avatar_url) + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover">'
         : '<div style="width:24px;height:24px;border-radius:50%;background:' + getAvatarColor(p.name) + ';display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:12px;color:#fff">' + getInitial(p.name) + '</div>';
       html += '<div class="podium-rest-row">'
         + '<span style="font-family:var(--font-display);font-size:16px;color:' + mc + ';width:32px">' + (ordinals[place-1]||place+'TH') + '</span>'
@@ -2767,16 +2826,21 @@ function getAvatarColor(name) {
   return colors[h % colors.length];
 }
 
+// Cache-bust avatar URLs so the browser always loads the latest image
+function avatarSrc(url) {
+  return `${API}${url}?v=${Date.now()}`;
+}
+
 // For use inside .player-avatar divs
 function avatarHtml(player) {
-  if (player.avatar_url) return `<img src="${API}${player.avatar_url}" alt="${player.name}">`;
+  if (player.avatar_url) return `<img src="${avatarSrc(player.avatar_url)}" alt="${player.name}">`;
   const color = getAvatarColor(player.name);
   return `<span style="font-family:var(--font-display);font-size:38px;color:#fff;line-height:1;background:${color};width:100%;height:100%;display:flex;align-items:center;justify-content:center;border-radius:50%"><span style="transform:translateY(8%);display:block">${getInitial(player.name)}</span></span>`;
 }
 
 // For use in small inline chips (player pool, selected players)
 function chipAvatarHtml(player) {
-  if (player.avatar_url) return `<img src="${API}${player.avatar_url}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;">`;
+  if (player.avatar_url) return `<img src="${avatarSrc(player.avatar_url)}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;">`;
   const color = getAvatarColor(player.name);
   return `<span style="font-family:var(--font-display);font-size:15px;color:#fff;background:${color};width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><span style="transform:translateY(8%);display:block">${getInitial(player.name)}</span></span>`;
 }
@@ -2797,6 +2861,166 @@ async function init() {
   await loadHistory();
 }
 init();
+</script>
+
+<!-- ── AVATAR CROP MODAL ─────────────────────────────────────────────────── -->
+<div id="avatarCropModal">
+  <div class="crop-title">Position your photo</div>
+  <div class="crop-viewport" id="cropViewport">
+    <img id="cropImg" draggable="false">
+  </div>
+  <div class="crop-hint">Drag to reposition · Pinch or scroll to zoom</div>
+  <div class="crop-actions">
+    <button class="btn btn-secondary" onclick="closeCropModal()">Cancel</button>
+    <button class="btn" onclick="saveCrop()">Use Photo</button>
+  </div>
+</div>
+
+<script>
+// ── AVATAR CROP ────────────────────────────────────────────────────────────────
+let _cropPlayerId = null;
+let _cropInput = null;
+
+// Transform state
+let cropX = 0, cropY = 0, cropScale = 1;
+let cropImgNaturalW = 0, cropImgNaturalH = 0;
+const VIEWPORT_SIZE = 280;
+
+function openCropModal(playerId, input, file) {
+  _cropPlayerId = playerId;
+  _cropInput = input;
+  const url = URL.createObjectURL(file);
+  const img = document.getElementById('cropImg');
+  img.onload = () => {
+    cropImgNaturalW = img.naturalWidth;
+    cropImgNaturalH = img.naturalHeight;
+    // Fit the shorter side to viewport, center
+    const fitScale = VIEWPORT_SIZE / Math.min(cropImgNaturalW, cropImgNaturalH);
+    cropScale = fitScale;
+    cropX = (VIEWPORT_SIZE - cropImgNaturalW * cropScale) / 2;
+    cropY = (VIEWPORT_SIZE - cropImgNaturalH * cropScale) / 2;
+    applyCropTransform();
+  };
+  img.src = url;
+  document.getElementById('avatarCropModal').classList.add('open');
+}
+
+function closeCropModal() {
+  document.getElementById('avatarCropModal').classList.remove('open');
+  // Reset file input so the same file can be re-selected
+  if (_cropInput) { _cropInput.value = ''; _cropInput = null; }
+  _cropPlayerId = null;
+}
+
+function applyCropTransform() {
+  const img = document.getElementById('cropImg');
+  img.style.width = (cropImgNaturalW * cropScale) + 'px';
+  img.style.height = (cropImgNaturalH * cropScale) + 'px';
+  img.style.transform = `translate(${cropX}px, ${cropY}px)`;
+}
+
+// Draw the cropped circle onto a canvas, export as blob, upload
+async function saveCrop() {
+  const img = document.getElementById('cropImg');
+  const OUTPUT = 400;
+  const canvas = document.createElement('canvas');
+  canvas.width = OUTPUT; canvas.height = OUTPUT;
+  const ctx = canvas.getContext('2d');
+  // Clip to circle
+  ctx.beginPath();
+  ctx.arc(OUTPUT/2, OUTPUT/2, OUTPUT/2, 0, Math.PI*2);
+  ctx.clip();
+  // cropX/cropY = where the image top-left sits in the viewport.
+  // So the viewport's top-left maps to source pixel (-cropX/cropScale, -cropY/cropScale).
+  const sx = -cropX / cropScale;
+  const sy = -cropY / cropScale;
+  const sw = VIEWPORT_SIZE / cropScale;
+  const sh = VIEWPORT_SIZE / cropScale;
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OUTPUT, OUTPUT);
+  canvas.toBlob(async (blob) => {
+    const form = new FormData();
+    form.append('file', blob, 'avatar.jpg');
+    await fetch(`${API}/players/${_cropPlayerId}/avatar`, { method: 'POST', body: form });
+    closeCropModal();
+    await loadPlayers();
+  }, 'image/jpeg', 0.92);
+}
+
+// ── Drag to pan ────────────────────────────────────────────────────────────────
+let _dragging = false, _dragStartX = 0, _dragStartY = 0, _dragOriginX = 0, _dragOriginY = 0;
+
+const vp = document.getElementById('cropViewport');
+
+vp.addEventListener('pointerdown', e => {
+  if (e.touches && e.touches.length > 1) return; // let pinch handle it
+  _dragging = true;
+  _dragStartX = e.clientX;
+  _dragStartY = e.clientY;
+  _dragOriginX = cropX;
+  _dragOriginY = cropY;
+  vp.setPointerCapture(e.pointerId);
+});
+
+vp.addEventListener('pointermove', e => {
+  if (!_dragging) return;
+  cropX = _dragOriginX + (e.clientX - _dragStartX);
+  cropY = _dragOriginY + (e.clientY - _dragStartY);
+  applyCropTransform();
+});
+
+vp.addEventListener('pointerup', () => { _dragging = false; });
+vp.addEventListener('pointercancel', () => { _dragging = false; });
+
+// ── Scroll to zoom ─────────────────────────────────────────────────────────────
+vp.addEventListener('wheel', e => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.92 : 1.08;
+  zoomAround(VIEWPORT_SIZE/2, VIEWPORT_SIZE/2, delta);
+}, { passive: false });
+
+// ── Pinch to zoom ─────────────────────────────────────────────────────────────
+let _lastPinchDist = null;
+
+vp.addEventListener('touchstart', e => {
+  if (e.touches.length === 2) {
+    _dragging = false;
+    _lastPinchDist = pinchDist(e.touches);
+  }
+}, { passive: true });
+
+vp.addEventListener('touchmove', e => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+    const dist = pinchDist(e.touches);
+    if (_lastPinchDist) {
+      const delta = dist / _lastPinchDist;
+      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const rect = vp.getBoundingClientRect();
+      zoomAround(cx - rect.left, cy - rect.top, delta);
+    }
+    _lastPinchDist = dist;
+  }
+}, { passive: false });
+
+vp.addEventListener('touchend', () => { _lastPinchDist = null; });
+
+function pinchDist(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+function zoomAround(pivotX, pivotY, delta) {
+  const minScale = VIEWPORT_SIZE / Math.max(cropImgNaturalW, cropImgNaturalH);
+  const newScale = Math.max(minScale, Math.min(cropScale * delta, 8));
+  const scaleChange = newScale / cropScale;
+  // Adjust position so the pivot point stays fixed
+  cropX = pivotX - scaleChange * (pivotX - cropX);
+  cropY = pivotY - scaleChange * (pivotY - cropY);
+  cropScale = newScale;
+  applyCropTransform();
+}
 </script>
 </body>
 </html>
