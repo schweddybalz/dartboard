@@ -1,7 +1,8 @@
 """
 Killer – Gran Darts rules.
-Each player throws to claim a target number, then hits it to earn Life.
-3 Life = become a Killer. Killers attack opponents' numbers to drain their Life.
+Assignment phase: each player throws one dart with off hand to claim a number.
+Re-throw if bullseye or already taken.
+Game phase: earn Life on your number to become Killer, then eliminate opponents.
 Last player standing wins.
 """
 import random
@@ -17,39 +18,38 @@ def _adjacent(n):
     return {BOARD_ORDER[(i - 1) % 20], BOARD_ORDER[(i + 1) % 20]}
 
 
-RING_HITS = {"single": 1, "double": 2, "triple": 3, "bull": 0, "bullseye": 0, "miss": 0}
+RING_HITS = {"single": 1, "outer_single": 1, "inner_single": 1, "double": 2, "triple": 3, "bull": 0, "bullseye": 0, "miss": 0}
 
 
 class KillerMode(BaseMode):
     mode_id = "killer"
     mode_name = "Killer"
-    description = "Earn Life on your number to become a Killer, then eliminate opponents."
+    description = "Claim your number with your off hand, earn Life to become a Killer, then eliminate opponents."
     options_schema = {
-        "only_double": {"type": "boolean", "default": False,
-                        "description": "Only double hits count after target selection"},
-        "only_triple": {"type": "boolean", "default": False,
-                        "description": "Only triple hits count after target selection"},
-        "straight_off": {"type": "boolean", "default": False,
-                         "description": "All players start already in Killer state"},
-        "one_hit_killer": {"type": "boolean", "default": False,
-                           "description": "All players start with full Life (3)"},
-        "no_life_recovery": {"type": "boolean", "default": False,
-                             "description": "Hitting own number does not restore Life (requires Straight Off or One Hit Killer)"},
-        "easy_players": {"type": "string", "default": "",
-                         "description": "Comma-separated player positions for easy mode (adjacent hits count) e.g. '1,3'"},
+        "only_double":      {"type": "boolean", "default": False, "description": "Only double hits count after target selection"},
+        "only_triple":      {"type": "boolean", "default": False, "description": "Only triple hits count after target selection"},
+        "straight_off":     {"type": "boolean", "default": False, "description": "All players start already in Killer state"},
+        "one_hit_killer":   {"type": "boolean", "default": False, "description": "All players start with full Life (3)"},
+        "no_life_recovery": {"type": "boolean", "default": False, "description": "Hitting own number does not restore Life"},
+        "easy_players":     {"type": "string",  "default": "",    "description": "Comma-separated player positions for easy mode e.g. '1,3'"},
+        "max_rounds":       {"type": "integer", "default": 0, "min": 0, "max": 50,
+                             "description": "Max rounds (0 = unlimited). First 50% normal, next 30% double, final 20% triple."},
     }
 
     def __init__(self, players, options):
         super().__init__(players, options)
-        self.starting_lives = 3  # always 3 per Gran Darts rules
-
-        self.only_double    = options.get("only_double", False)
-        self.only_triple    = options.get("only_triple", False)
-        self.straight_off   = options.get("straight_off", False)
-        self.one_hit_killer = options.get("one_hit_killer", False)
+        self.starting_lives   = 3
+        self.only_double      = options.get("only_double", False)
+        self.only_triple      = options.get("only_triple", False)
+        self.straight_off     = options.get("straight_off", False)
+        self.one_hit_killer   = options.get("one_hit_killer", False)
         self.no_life_recovery = options.get("no_life_recovery", False)
+        self.max_rounds       = max(0, int(options.get("max_rounds", 0)))
 
-        # Per-player easy mode
+        # Round tracking (only meaningful when max_rounds > 0)
+        self._current_round = 0
+        self._last_multiplier = 1
+
         easy_str = options.get("easy_players", "").strip()
         if easy_str:
             try:
@@ -60,89 +60,76 @@ class KillerMode(BaseMode):
         else:
             self._easy = {p["id"]: False for p in players}
 
-        # Life points (0–3+)
-        if self.straight_off or self.one_hit_killer:
-            self._lives = {p["id"]: self.starting_lives for p in players}
-        else:
-            self._lives = {p["id"]: 0 for p in players}
+        # Assignment phase state
+        self._phase = "assignment"           # "assignment" | "game"
+        self._number = {}                    # pid → assigned number
+        self._number_to_player = {}          # number → pid
+        self._assignment_order = [p["id"] for p in players]  # who still needs to assign
 
-        # Killer status
+        # Game phase state
         if self.straight_off or self.one_hit_killer:
-            self._is_killer = {p["id"]: True for p in players}
+            self._lives     = {p["id"]: self.starting_lives for p in players}
+            self._is_killer = {p["id"]: True  for p in players}
         else:
+            self._lives     = {p["id"]: 0     for p in players}
             self._is_killer = {p["id"]: False for p in players}
 
-        # Number assignment
-        easy_pids = {p["id"] for p in players if self._easy.get(p["id"])}
-        self._number = self._assign_numbers(players, easy_pids)
-        self._number_to_player = {v: k for k, v in self._number.items()}
+        self._eliminated       = {p["id"]: False for p in players}
+        self._elimination_order = []
 
-        # Eliminated set (reached 0 AND got hit once more)
-        self._eliminated = {p["id"]: False for p in players}
-        self._elimination_order = []  # first out = index 0
-
-    def _assign_numbers(self, players, easy_pids):
-        import random as _r
-        from itertools import combinations
-
-        def board_dist(a, b):
-            ia, ib = BOARD_ORDER.index(a), BOARD_ORDER.index(b)
-            return min(abs(ia - ib), 20 - abs(ia - ib))
-
-        easy_players  = [p for p in players if p["id"] in easy_pids]
-        normal_players = [p for p in players if p["id"] not in easy_pids]
-        n_easy = len(easy_players)
-        all_nums = list(range(1, 21))
-
-        if n_easy == 0:
-            nums = _r.sample(all_nums, len(players))
-            return {p["id"]: nums[i] for i, p in enumerate(players)}
-
-        valid_combos = [c for c in combinations(all_nums, n_easy)
-                        if all(board_dist(c[i], c[j]) >= 3
-                               for i in range(n_easy) for j in range(i+1, n_easy))]
-        if not valid_combos:
-            nums = _r.sample(all_nums, len(players))
-            return {p["id"]: nums[i] for i, p in enumerate(players)}
-
-        easy_nums = list(_r.choice(valid_combos))
-        _r.shuffle(easy_nums)
-
-        forbidden = set()
-        for en in easy_nums:
-            idx = BOARD_ORDER.index(en)
-            forbidden |= {en, BOARD_ORDER[(idx-1)%20], BOARD_ORDER[(idx+1)%20]}
-
-        safe = [n for n in all_nums if n not in forbidden]
-        if len(safe) < len(normal_players):
-            nums = _r.sample(all_nums, len(players))
-            return {p["id"]: nums[i] for i, p in enumerate(players)}
-
-        _r.shuffle(safe)
-        assignment = {}
-        for i, p in enumerate(easy_players):
-            assignment[p["id"]] = easy_nums[i]
-        for i, p in enumerate(normal_players):
-            assignment[p["id"]] = safe[i]
-        return assignment
-
-    def initial_scores(self):
-        return {p["id"]: self._lives[p["id"]] for p in self.players}
+    # ── helpers ───────────────────────────────────────────────────────────────
 
     def _ring_hits(self, ring):
-        """Life change value for a ring, respecting only_double / only_triple options."""
-        if self.only_double and ring != "double":
-            return 0
-        if self.only_triple and ring != "triple":
-            return 0
-        return RING_HITS.get(ring, 0)
+        """Return base hit value: single=1, double=2, triple=3, else 0."""
+        if ring in ('single', 'outer_single', 'inner_single'):
+            base = 1
+        elif ring == 'double':
+            base = 2
+        elif ring == 'triple':
+            base = 3
+        else:
+                return 0  # bull, bullseye, miss
+        if self.only_double and ring != 'double': return 0
+        if self.only_triple and ring != 'triple': return 0
+        return base
+
+    def _hit_multiplier(self):
+        """Return 1/2/3 based on which phase of max_rounds we're in."""
+        if self.max_rounds <= 0:
+            return 1
+        r = self._current_round
+        double_start = int(self.max_rounds * 0.50)
+        triple_start = int(self.max_rounds * 0.80)
+        if r >= triple_start:
+            return 3
+        if r >= double_start:
+            return 2
+        return 1
+
+    def on_turn_start(self, state):
+        if self._phase == "game" and self.max_rounds > 0:
+            # Track rounds: increment when first alive player starts their turn
+            first_alive_idx = next(
+                (i for i, p in enumerate(state["players"])
+                 if not self._eliminated.get(p["id"], False)),
+                None
+            )
+            if first_alive_idx is not None and state["current_player_idx"] == first_alive_idx:
+                self._current_round += 1
+        # Announce when multiplier changes
+        new_mult = self._hit_multiplier()
+        if new_mult != self._last_multiplier:
+            self._last_multiplier = new_mult
+            if new_mult == 2:
+                state['_pending_announcement'] = "🔥 DOUBLE DAMAGE! All hits count double this round!"
+            elif new_mult == 3:
+                state['_pending_announcement'] = "💥 TRIPLE DAMAGE! All hits count triple — anything goes!"
 
     def _hits_segment(self, pid, segment):
-        my_num = self._number[pid]
-        if segment == my_num:
-            return True
-        if self._easy[pid] and segment in _adjacent(my_num):
-            return True
+        my_num = self._number.get(pid)
+        if my_num is None: return False
+        if segment == my_num: return True
+        if self._easy[pid] and segment in _adjacent(my_num): return True
         return False
 
     def _attack_target(self, attacker_pid, segment):
@@ -154,81 +141,121 @@ class KillerMode(BaseMode):
                     return pid
         return None
 
+    # ── scoring ───────────────────────────────────────────────────────────────
+
+    def initial_scores(self):
+        return {p["id"]: self._lives[p["id"]] for p in self.players}
+
     def on_dart(self, state, player, segment, ring, raw_score):
         pid = player["id"]
         scores = dict(state["player_scores"])
 
+        # ── Assignment phase ──────────────────────────────────────────────────
+        if self._phase == "assignment":
+            # Must be this player's assignment turn
+            if not self._assignment_order or self._assignment_order[0] != pid:
+                return {"player_scores": scores, "scored": 0,
+                        "message": "Wait your turn for number assignment"}
+
+            # Reject bullseye / miss
+            if ring in ("bull", "bullseye", "miss") or segment == 0:
+                return {"player_scores": scores, "scored": 0,
+                        "advance_turn": False,
+                        "message": f"Bullseye/miss — throw again!",
+                        "announcement": f"{player['name']} hit bullseye — throw again with your off hand!"}
+
+            # Reject already taken
+            if segment in self._number_to_player:
+                taken_by = next(p["name"] for p in self.players
+                                if p["id"] == self._number_to_player[segment])
+                return {"player_scores": scores, "scored": 0,
+                        "advance_turn": False,
+                        "message": f"{segment} is taken by {taken_by} — throw again!",
+                        "announcement": f"❌ {segment} is already taken by {taken_by}! {player['name']}, throw again."}
+
+            # Valid — assign the number
+            self._number[pid] = segment
+            self._number_to_player[segment] = pid
+            self._assignment_order.pop(0)
+
+            ann = f"{player['name']} claims number {segment}!"
+
+            # Check if all assigned
+            if not self._assignment_order:
+                self._phase = "game"
+                ann += " All numbers assigned — game on!"
+
+            return {"player_scores": scores, "scored": 0,
+                    "advance_turn": True,
+                    "message": ann, "announcement": ann}
+
+        # ── Game phase ────────────────────────────────────────────────────────
         if self._eliminated[pid]:
-            return {"player_scores": scores, "scored": 0, "message": f"{player['name']} is eliminated"}
+            return {"player_scores": scores, "scored": 0,
+                    "message": f"{player['name']} is eliminated"}
 
         hits = self._ring_hits(ring)
+        mult = self._hit_multiplier()
+        if hits > 0:
+            hits = hits * mult
 
-        # ── Phase 1: earning Life to become Killer ────────────────────────────
+        # Pick up any pending round-change announcement (set in on_turn_start)
+        pending_ann = state.pop('_pending_announcement', None)
+
+        # Phase 1: earning Life
         if not self._is_killer[pid]:
             if self._hits_segment(pid, segment) and hits > 0:
-                self._lives[pid] = min(self.starting_lives + hits, self._lives[pid] + hits)
-                # Cap at starting_lives for display purposes (Gran Darts caps at 3)
-                self._lives[pid] = min(self._lives[pid], self.starting_lives)
+                self._lives[pid] = min(self.starting_lives, self._lives[pid] + hits)
                 scores[pid] = self._lives[pid]
                 if self._lives[pid] >= self.starting_lives:
                     self._is_killer[pid] = True
-                    return {
-                        "player_scores": scores, "scored": 0,
-                        "message": f"{player['name']} is now a KILLER!",
-                        "announcement": f"{player['name']} is now a Killer! Watch out!",
-                    }
-                return {
-                    "player_scores": scores, "scored": 0,
-                    "message": f"Life: {self._lives[pid]}/{self.starting_lives}",
-                    "announcement": f"{player['name']} — {self._lives[pid]}/{self.starting_lives} Life",
-                }
-            return {
-                "player_scores": scores, "scored": 0,
-                "message": f"Need Life on {self._number[pid]} ({self._lives[pid]}/{self.starting_lives})",
-            }
+                    ann = pending_ann or f"💀 {player['name']} is now a KILLER! Watch out!"
+                    return {"player_scores": scores, "scored": 0,
+                            "message": f"{player['name']} is now a KILLER!",
+                            "announcement": ann}
+                ann = pending_ann or f"{player['name']} — {self._lives[pid]}/{self.starting_lives} Life (+{hits})"
+                return {"player_scores": scores, "scored": 0,
+                        "message": f"Life: {self._lives[pid]}/{self.starting_lives} (+{hits})",
+                        "announcement": ann}
+            ann = pending_ann  # show round announcement even on a miss
+            return {"player_scores": scores, "scored": 0,
+                    "message": f"Need Life on {self._number.get(pid, '?')} ({self._lives[pid]}/{self.starting_lives})",
+                    "announcement": ann}
 
-        # ── Phase 2: Killer attacking ─────────────────────────────────────────
+        # Phase 2: Killer attacking
         target_id = self._attack_target(pid, segment)
-
         if target_id is None:
-            return {"player_scores": scores, "scored": 0, "message": "No target hit"}
+            return {"player_scores": scores, "scored": 0, "message": "No target hit",
+                    "announcement": pending_ann}
 
-        # Self-hit penalty
         if target_id == pid:
             if not self.no_life_recovery and hits > 0:
-                # Hitting own number as killer: lose life but cannot self-eliminate
                 self._lives[pid] = max(0, self._lives[pid] - hits)
                 scores[pid] = self._lives[pid]
                 if self._lives[pid] < self.starting_lives:
-                    self._is_killer[pid] = False  # lose Killer status
+                    self._is_killer[pid] = False
                 if self._lives[pid] == 0:
-                    msg = f"Self-hit! {player['name']} is on 0 life — one hit eliminates them!"
-                    announcement = msg
-                else:
-                    msg = f"Self-hit! {player['name']} loses {hits} Life ({self._lives[pid]} left)"
-                    announcement = f"Oops! {player['name']} hit their own number and loses Killer status!"
-                return {
-                    "player_scores": scores, "scored": 0,
-                    "message": msg,
-                    "announcement": announcement,
-                }
-            return {"player_scores": scores, "scored": 0, "message": "Self-hit (no effect)"}
+                    self._eliminated[pid] = True
+                return {"player_scores": scores, "scored": 0,
+                        "message": f"Self-hit! {player['name']} loses {hits} Life ({self._lives[pid]} left)",
+                        "announcement": pending_ann or f"Oops! {player['name']} hit their own number!"}
+            return {"player_scores": scores, "scored": 0, "message": "Self-hit (no effect)",
+                    "announcement": pending_ann}
 
         target_player = next(p for p in self.players if p["id"] == target_id)
-
         if self._eliminated[target_id]:
-            return {"player_scores": scores, "scored": 0, "message": f"{target_player['name']} already eliminated"}
-
+            return {"player_scores": scores, "scored": 0,
+                    "message": f"{target_player['name']} already eliminated",
+                    "announcement": pending_ann}
         if hits == 0:
-            return {"player_scores": scores, "scored": 0, "message": "No effect (wrong ring type)"}
+            return {"player_scores": scores, "scored": 0, "message": "No effect (wrong ring type)",
+                    "announcement": pending_ann}
 
-        # Attack target
         prev_lives = self._lives[target_id]
-        new_lives = max(0, prev_lives - hits)
+        new_lives  = max(0, prev_lives - hits)
         self._lives[target_id] = new_lives
         scores[target_id] = new_lives
 
-        # Dead if already at 0, or if hits would take them below 0 (past -1)
         if prev_lives == 0 or hits > prev_lives:
             self._lives[target_id] = 0
             scores[target_id] = 0
@@ -236,24 +263,20 @@ class KillerMode(BaseMode):
             self._eliminated[target_id] = True
             if target_id not in self._elimination_order:
                 self._elimination_order.append(target_id)
-            msg = f"{target_player['name']} is ELIMINATED!"
-            announcement = msg
+            msg = f"💀 {target_player['name']} is ELIMINATED!"
         elif new_lives == 0:
-            # Reach exactly 0 — lose killer status but not yet eliminated
             if self._is_killer[target_id]:
                 self._is_killer[target_id] = False
             msg = f"{target_player['name']} hits 0 Life! One more hit eliminates them!"
-            announcement = msg
         else:
-            # Target loses killer status if their life drops below starting
             if self._is_killer[target_id] and new_lives < self.starting_lives:
                 self._is_killer[target_id] = False
                 msg = f"{target_player['name']} loses {hits} Life and Killer status! ({new_lives} left)"
             else:
                 msg = f"{target_player['name']} loses {hits} Life! ({new_lives} left)"
-            announcement = msg
 
-        return {"player_scores": scores, "scored": hits, "message": msg, "announcement": announcement}
+        return {"player_scores": scores, "scored": hits,
+                "message": msg, "announcement": pending_ann or msg}
 
     def is_player_eliminated(self, pid):
         return self._eliminated.get(pid, False)
@@ -263,10 +286,18 @@ class KillerMode(BaseMode):
         if len(alive) == 1:
             state["winner_id"] = alive[0]
             return True
+        # Round limit reached
+        if self.max_rounds > 0 and self._current_round > self.max_rounds:
+            # Winner = most lives among alive players
+            best = max(alive, key=lambda pid: self._lives[pid])
+            state["winner_id"] = best
+            return True
         return False
 
     def get_display_state(self, state):
         return {
+            "phase": self._phase,
+            "assignment_queue": list(self._assignment_order),
             "lives": self._lives,
             "is_killer": self._is_killer,
             "assigned_numbers": self._number,
@@ -274,6 +305,9 @@ class KillerMode(BaseMode):
             "easy_mode": self._easy,
             "eliminated": self._eliminated,
             "elimination_order": self._elimination_order,
+            "max_rounds": self.max_rounds,
+            "current_round": self._current_round,
+            "hit_multiplier": self._hit_multiplier(),
         }
 
     def restore_state(self, state):

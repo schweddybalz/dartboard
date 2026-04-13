@@ -1,5 +1,5 @@
 """
-Shanghai – 7 rounds, each targeting a number. Highest score wins.
+Shanghai – 7–20 rounds, each targeting a number. Highest score wins.
 Shanghai (S+D+T in one turn) = instant win.
 Easy mode: adjacent numbers score face value (configurable per player).
 """
@@ -17,9 +17,9 @@ def _adjacent(n):
 class ShanghaiMode(BaseMode):
     mode_id = "shanghai"
     mode_name = "Shanghai"
-    description = "7 rounds targeting 1–7. Highest score wins. S+D+T in one turn = instant win."
+    description = "7–20 rounds targeting board numbers. Highest score wins. S+D+T in one turn = instant win."
     options_schema = {
-        "rounds": {"type": "integer", "default": 7, "min": 3, "max": 20},
+        "rounds": {"type": "integer", "default": 7, "min": 7, "max": 20},
         "easy_mode": {"type": "boolean", "default": False,
                       "description": "Adjacent numbers score face value (no double/triple bonus)"},
         "easy_players": {"type": "string", "default": "",
@@ -28,7 +28,7 @@ class ShanghaiMode(BaseMode):
 
     def __init__(self, players, options):
         super().__init__(players, options)
-        self.total_rounds = options.get("rounds", 7)
+        self.total_rounds = max(7, min(20, options.get("rounds", 7)))
         global_easy = options.get("easy_mode", False)
         easy_str = options.get("easy_players", "").strip()
         if easy_str:
@@ -106,12 +106,20 @@ class ShanghaiMode(BaseMode):
 
     def get_display_state(self, state):
         target = self._current_target(state)
+        # Compute marks scored this turn from darts_this_turn
+        ring_marks = {"single":1,"outer_single":1,"inner_single":1,"double":2,"triple":3}
+        darts = state.get("darts_this_turn", [])
+        pid_current = state["players"][state["current_player_idx"]]["id"]
+        turn_marks = sum(ring_marks.get(d["ring"], 0) for d in darts
+                         if d.get("player_id") == pid_current and d.get("segment") == target and d.get("scored", 0) > 0)
+        pun_marks = turn_marks if (len(darts) >= 3 and turn_marks >= 2) else None
         return {
             "current_target": target,
             "total_rounds": self.total_rounds,
             "round_hits": {pid: list(hits) for pid, hits in self._round_hits.items()},
             "scores": state["player_scores"],
             "easy_mode": self._easy,
+            "pun_marks": pun_marks,
         }
 
     def on_turn_start(self, state):

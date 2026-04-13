@@ -289,7 +289,7 @@ class X01Mode(BaseMode):
                 "player_scores": scores,
                 "scored": 0,
                 "bust": True,
-                "advance_turn": True,
+                "advance_turn": False,
                 "message": f"Bust! Back to {turn_start}",
             }
 
@@ -300,7 +300,7 @@ class X01Mode(BaseMode):
                     "player_scores": scores,
                     "scored": 0,
                     "bust": True,
-                    "advance_turn": True,
+                    "advance_turn": False,
                     "message": "Need a double to finish! Bust.",
                     "announcement": f"{player['name']} needs a double to finish!",
                 }
@@ -309,9 +309,9 @@ class X01Mode(BaseMode):
                 "player_scores": scores,
                 "scored": raw_score,
                 "winner_id": pid,
-                "advance_turn": True,
+                "advance_turn": False,
                 "message": f"{player['name']} wins!",
-                "announcement": f"Game shot! {player['name']} wins!",
+                "announcement": None,
             }
 
         scores[rep] = new_score
@@ -344,6 +344,29 @@ class X01Mode(BaseMode):
             ]
         else:
             team_info = None
+
+        # Detect turn achievements from darts_this_turn
+        darts = state.get("darts_this_turn", [])
+        achievement = None
+        if len(darts) >= 3:
+            pid_current = state["players"][state["current_player_idx"]]["id"]
+            turn_darts = [d for d in darts if d.get("player_id") == pid_current and not d.get("bust")]
+            turn_score = sum(d.get("scored", 0) for d in turn_darts)
+            rings = [d.get("ring", "") for d in turn_darts]
+            segs  = [d.get("segment", 0) for d in turn_darts]
+            bull_rings = {"bull", "bullseye"}
+            bull_count = sum(1 for r in rings if r in bull_rings)
+            if turn_score == 180:
+                achievement = "maximum"
+            elif bull_count == 3:
+                achievement = "hat_trick"
+            elif len(set(segs)) == 1 and len(set(rings)) == 1 and rings[0] not in ("miss",):
+                achievement = "three_in_a_bed"
+            elif 140 <= turn_score <= 179:
+                achievement = "high_ton"
+            elif 100 <= turn_score <= 139:
+                achievement = "low_ton"
+
         return {
             "start_score": self.start,
             "double_out": self.double_out,
@@ -351,6 +374,7 @@ class X01Mode(BaseMode):
             "remaining": {pid: scores[self._rep(pid)] for pid in scores},
             "checkouts": {pid: self._checkout_table().get(scores[self._rep(pid)], "") for pid in scores},
             "teams": team_info,
+            "achievement": achievement,
         }
 
     def restore_state(self, state):

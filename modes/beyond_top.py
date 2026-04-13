@@ -11,7 +11,6 @@ TOTAL_ROUNDS = 10
 STARTING_LIVES = 6
 INITIAL_TARGET = 30
 
-
 class BeyondTopMode(BaseMode):
     mode_id = "beyond_top"
     mode_name = "Beyond Top"
@@ -30,30 +29,25 @@ class BeyondTopMode(BaseMode):
         self.total_rounds = options.get("rounds", TOTAL_ROUNDS)
         self.starting_lives = options.get("lives", STARTING_LIVES)
         self.starting_target = options.get("starting_target", INITIAL_TARGET)
-
         self._lives = {p["id"]: self.starting_lives for p in players}
-        self._points = {p["id"]: 0 for p in players}       # bonus points earned
+        self._points = {p["id"]: 0 for p in players}
         self._eliminated = {p["id"]: False for p in players}
         self._current_round = 1
-        self._turn_score = 0        # running total for current player's turn
-        self._target = self.starting_target  # score to beat this turn
-        self._prev_score = self.starting_target  # last player's score (or initial target)
-        self._round_target_reset = self.starting_target  # target at start of each round
+        self._turn_score = 0
+        self._target = self.starting_target
+        self._prev_score = self.starting_target
+        self._round_target_reset = self.starting_target
 
     def initial_scores(self):
-        # player_scores stores lives (used for life pip display)
         return {p["id"]: self.starting_lives for p in self.players}
 
     def is_player_eliminated(self, pid):
         return self._eliminated.get(pid, False)
 
     def on_turn_start(self, state):
-        """Called at the start of each turn. Reset turn score and detect new round."""
         self._turn_score = 0
         pid = state["players"][state["current_player_idx"]]["id"]
 
-        # Detect new round: this player is the first alive player in the rotation
-        # Find the first non-eliminated player in player order
         first_alive_idx = None
         for i, p in enumerate(state["players"]):
             if not self._eliminated.get(p["id"], False):
@@ -61,12 +55,9 @@ class BeyondTopMode(BaseMode):
                 break
 
         if state["current_player_idx"] == first_alive_idx:
-            # Recalculate round number based on how many full rotations of alive players
-            # have completed — use turn_number as a proxy
             alive_count = sum(1 for p in state["players"] if not self._eliminated.get(p["id"], False))
             if alive_count > 0:
                 self._current_round = (state["turn_number"] - 1) // len(state["players"]) + 1
-            # Reset target for the new round
             self._target = self._round_target_reset
             self._prev_score = self._round_target_reset
 
@@ -81,8 +72,6 @@ class BeyondTopMode(BaseMode):
 
         dart_num = len(state.get("darts_this_turn", [])) + 1
 
-        # Only evaluate after 3 darts (turn end handled naturally by engine)
-        # We return the running total as scored so the last dart completes the turn
         if dart_num < 3:
             return {
                 "player_scores": scores,
@@ -98,22 +87,24 @@ class BeyondTopMode(BaseMode):
             # Success — earn bonus points
             bonus = (total - target) // 10
             self._points[pid] += bonus
+            # Target always moves to this player's score regardless of win/loss
             self._prev_score = total
-            self._target = total  # next player must beat this
+            self._target = total
+            self._round_target_reset = total
             msg = f"{player['name']} scored {total}! Beat {target}."
             if bonus:
                 msg += f" +{bonus} bonus point{'s' if bonus != 1 else ''}!"
             ann = msg
         else:
-            # Failed to beat — lose a life
+            # Failed to beat — lose a life, but target still moves to their score
             self._lives[pid] = max(0, self._lives[pid] - 1)
             scores[pid] = self._lives[pid]
             if self._lives[pid] == 0:
                 self._eliminated[pid] = True
-            # Target resets: next player must beat the same target as this player had
-            # (failed player doesn't raise the bar)
-            self._prev_score = target   # bar stays at what this player had to beat
-            self._target = target
+            # Target moves to their score even on failure
+            self._prev_score = total
+            self._target = total
+            self._round_target_reset = total
             msg = f"{player['name']} scored {total}, needed > {target}. Lost a life! ({self._lives[pid]} left)"
             ann = msg
 
@@ -126,13 +117,10 @@ class BeyondTopMode(BaseMode):
 
     def is_game_over(self, state):
         alive = [pid for pid, elim in self._eliminated.items() if not elim]
-        # Single player left = winner
         if len(alive) == 1:
             state["winner_id"] = alive[0]
             return True
-        # All rounds complete — use _current_round which is maintained by on_turn_start
         if self._current_round > self.total_rounds:
-            # Winner = highest points among alive players
             best = max(alive, key=lambda pid: self._points[pid])
             state["winner_id"] = best
             return True
@@ -155,7 +143,6 @@ class BeyondTopMode(BaseMode):
         self._lives = dict(scores)
         self._eliminated = {pid: (lives == 0) for pid, lives in self._lives.items()}
         self._turn_score = 0
-        # Recompute round from turn number
         n = len(state.get("players", self.players))
         turn = state.get("turn_number", 1)
         self._current_round = (turn - 1) // n + 1

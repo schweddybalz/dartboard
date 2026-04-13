@@ -66,6 +66,12 @@ class Database:
                     reason      TEXT,
                     created_at  TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS live_state (
+                    id          INTEGER PRIMARY KEY CHECK (id = 1),
+                    state_json  TEXT NOT NULL,
+                    saved_at    TEXT NOT NULL
+                );
             """)
             # Migration: add color column if it doesn't exist yet
             try:
@@ -237,3 +243,26 @@ class Database:
             ).fetchall()
             game["darts"] = [dict(d) for d in darts]
             return game
+
+    # ── Live state persistence ────────────────────────────────────────────────
+
+    def save_live_state(self, state: dict):
+        """Persist the current game state so it survives server restarts."""
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO live_state (id, state_json, saved_at) VALUES (1, ?, ?)",
+                (json.dumps(state), datetime.utcnow().isoformat())
+            )
+
+    def load_live_state(self) -> Optional[dict]:
+        """Load persisted game state on startup."""
+        with self._conn() as conn:
+            row = conn.execute("SELECT state_json FROM live_state WHERE id=1").fetchone()
+            if row:
+                return json.loads(row[0])
+            return None
+
+    def clear_live_state(self):
+        """Clear persisted state when a game ends or is explicitly cleared."""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM live_state WHERE id=1")

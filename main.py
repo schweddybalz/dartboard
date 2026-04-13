@@ -240,6 +240,19 @@ def game_detail(game_id: str):
     return game
 
 
+@app.get("/audio/{folder}")
+def list_audio(folder: str):
+    """List mp3 files in uploads/{folder}/"""
+    if folder not in ("loser", "winner", "good", "bad"):
+        raise HTTPException(400, "Invalid folder")
+    from pathlib import Path
+    audio_dir = Path("uploads") / folder
+    if not audio_dir.exists():
+        return []
+    files = [f"/uploads/{folder}/{f.name}" for f in audio_dir.glob("*.mp3")]
+    return files
+
+
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")

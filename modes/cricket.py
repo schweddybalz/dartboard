@@ -129,6 +129,15 @@ class CricketMode(BaseMode):
         if hits == 0:
             return {"player_scores": dict(state["player_scores"]), "scored": 0}
 
+        # If number is globally closed (all entities at 3), do nothing
+        if all(self._marks[e][number] >= 3 for e in self._entity_ids()):
+            return {
+                "player_scores": dict(state["player_scores"]),
+                "scored": 0,
+                "message": f"{number} already closed",
+                "announcement": None,
+            }
+
         marks = self._marks
         current_marks = marks[eid][number]
         new_marks = min(current_marks + hits, 3)
@@ -163,11 +172,14 @@ class CricketMode(BaseMode):
         if scored_points:
             msg += f" (+{scored_points})"
 
+        globally_closed_now = all(self._marks[e][number] >= 3 for e in self._entity_ids())
+        announcement = self._announce(player["name"], number, current_marks, new_marks, scored_points, globally_closed_now)
+
         return {
             "player_scores": scores,
             "scored": scored_points,
             "message": msg,
-            "announcement": self._announce(player["name"], number, new_marks, scored_points),
+            "announcement": announcement,
         }
 
     def _all_closed_by(self, eid):
@@ -226,6 +238,30 @@ class CricketMode(BaseMode):
                 for i, team in enumerate(self._teams)
             ]
 
+        # Compute marks scored this turn for pun system
+        ring_marks = {"single": 1, "outer_single": 1, "inner_single": 1, "double": 2, "triple": 3, "bull": 1, "bullseye": 2}
+        darts = state.get("darts_this_turn", [])
+        pid_current = state["players"][state["current_player_idx"]]["id"]
+        eid_current = self._entity_for_player(pid_current)
+        turn_marks = 0
+        for d in darts:
+            if d.get("player_id") != pid_current:
+                continue
+            seg = d.get("segment")
+            ring = d.get("ring", "")
+            if seg not in CRICKET_NUMBERS and not (ring in ("bull", "bullseye")):
+                continue
+            num = 25 if ring in ("bull", "bullseye") else seg
+            if num not in CRICKET_NUMBERS:
+                continue
+            # Skip globally closed numbers
+            if all(self._marks[e][num] >= 3 for e in self._entity_ids()):
+                continue
+            m = ring_marks.get(ring, 0)
+            turn_marks += min(m, 3)  # count marks as thrown, cap at 3 per dart
+
+        pun_marks = turn_marks if (len(darts) >= 3 and turn_marks >= 2) else None
+
         return {
             "cricket_marks": player_marks,
             "cricket_numbers": CRICKET_NUMBERS,
@@ -233,20 +269,24 @@ class CricketMode(BaseMode):
             "cutthroat": self.cutthroat,
             "teams": team_info,
             "points": dict(state["player_scores"]),
+            "pun_marks": pun_marks,
         }
 
     def restore_state(self, state):
         self._marks = self._fresh_marks()
         self._points = {e: 0 for e in self._entity_ids()}
 
-    def _announce(self, name, number, marks, points):
+    def _announce(self, name, number, prev_marks, new_marks, points, globally_closed_now):
         label = "Bull" if number == 25 else str(number)
-        if marks >= 3:
-            base = f"{name} closes {label}!"
-        elif marks == 2:
-            base = f"{name} — 2 marks on {label}"
+        just_opened = prev_marks < 3 and new_marks >= 3
+        if globally_closed_now:
+            base = f"{label} is closed!"
+        elif just_opened:
+            base = f"{name} opens {label}!"
+        elif points:
+            base = f"{name} scores on {label}!"
         else:
-            base = f"{name} hits {label}"
+            return None  # partial marks, not interesting enough to announce
         if points:
             base += f" — {points} points!"
         return base

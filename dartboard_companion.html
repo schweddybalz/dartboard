@@ -713,58 +713,6 @@
 
 
 
-  /* ── AVATAR CROP MODAL ───────────────────────────── */
-  #avatarCropModal {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 10000;
-    background: rgba(0,0,0,0.92);
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 24px;
-    padding: 24px;
-  }
-  #avatarCropModal.open { display: flex; }
-  .crop-title {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    letter-spacing: 3px;
-    color: var(--muted);
-    text-transform: uppercase;
-  }
-  .crop-viewport {
-    position: relative;
-    width: 280px;
-    height: 280px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 3px solid var(--primary);
-    box-shadow: 0 0 40px rgba(0,135,81,0.4);
-    touch-action: none;
-    cursor: grab;
-    flex-shrink: 0;
-  }
-  .crop-viewport:active { cursor: grabbing; }
-  #cropImg {
-    position: absolute;
-    transform-origin: 0 0;
-    user-select: none;
-    pointer-events: none;
-  }
-  .crop-hint {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--muted);
-    text-align: center;
-    letter-spacing: 1px;
-  }
-  .crop-actions {
-    display: flex;
-    gap: 12px;
-  }
-
   .scores-table { width: 100%; border-collapse: collapse; }
   .scores-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); font-size: 14px; text-transform: uppercase; }
   .scores-table td:last-child { text-align: right; font-family: var(--font-display); font-size: 20px; color: var(--primary); }
@@ -898,21 +846,27 @@
             <button class="btn btn-secondary btn-sm" onclick="nextTurn()">Skip Turn</button>
           </div>
         </div>
-        <div class="panel-body">
-          <!-- Ring selector -->
-          <div class="form-row">
+        <div class="panel-body" id="compThrowBody">
+          <!-- Ring selector — swaps for S&L mode -->
+          <div class="form-row" id="ringPanel">
             <div class="form-label">Ring</div>
-            <div style="display:flex;gap:8px">
-              <button class="throw-btn" id="ring-single" onclick="selectRing('single')" style="flex:1">Single</button>
-              <button class="throw-btn" id="ring-double" onclick="selectRing('double')" style="flex:1">Double</button>
-              <button class="throw-btn" id="ring-triple" onclick="selectRing('triple')" style="flex:1">Triple</button>
-              <button class="throw-btn special" id="ring-bull" onclick="throwDart(25,'bull')" style="flex:1">Bull<br><span style="font-size:10px">25</span></button>
-              <button class="throw-btn special" id="ring-bullseye" onclick="throwDart(25,'bullseye')" style="flex:1">Bull<br><span style="font-size:10px">50</span></button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap" id="ringButtons">
+              <!-- Populated by renderRingPanel() -->
             </div>
           </div>
-          <!-- Number grid -->
-          <div class="form-label" style="margin-bottom:8px">Number</div>
-          <div class="quick-throw" id="numberGrid"></div>
+          <!-- Number grid (hidden in S&L mode) -->
+          <div id="numberGridWrap">
+            <div class="form-label" style="margin-bottom:8px">Number</div>
+            <div class="quick-throw" id="numberGrid"></div>
+          </div>
+        </div>
+        <div id="compNextPlayerBtn" style="display:none;padding:12px">
+          <button onclick="nextTurn()" style="
+            width:100%;padding:20px;font-size:22px;font-weight:900;letter-spacing:2px;
+            background:var(--primary);color:var(--black);border:none;border-radius:12px;
+            cursor:pointer;text-transform:uppercase;">
+            NEXT PLAYER →
+          </button>
         </div>
       </div>
     </div>
@@ -1101,6 +1055,7 @@ function switchView(view) {
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
 function renderAll() {
+  renderRingPanel();
   renderCompanion();
 }
 
@@ -1541,7 +1496,7 @@ function renderX01TeamsTV(ds) {
           const isThisThrower = p.id === state.current_player_id;
           const avatarColor = getAvatarColor(p.name);
           const avatarInner = p.avatar_url
-            ? `<img src="${avatarSrc(p.avatar_url)}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+            ? `<img src="${API}${p.avatar_url}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
             : `<span style="font-family:var(--font-display);font-size:22px;color:#fff;background:${avatarColor};width:100%;height:100%;border-radius:50%;display:flex;align-items:center;justify-content:center"><span style="transform:translateY(8%);display:block">${getInitial(p.name)}</span></span>`;
           const firstName = p.name.split(' ')[0];
           return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:70px;flex-shrink:0">
@@ -1584,8 +1539,32 @@ function renderCompanion() {
 
     // Dart slots
     const dartsThrown = state.darts_this_turn.length;
-    document.getElementById('compDartSlots').innerHTML =
-      [0,1,2].map(i => `<div class="dart-slot" style="display:inline-block;width:24px;height:4px;border-radius:2px;margin-right:4px;background:${i<dartsThrown?'var(--primary)':'var(--border)'}"></div>`).join('');
+    // During killer assignment, hide dart slot indicators (1 dart auto-advances)
+    const dartSlotsEl = document.getElementById('compDartSlots');
+    if (isKillerAssignment()) {
+      if (dartSlotsEl) dartSlotsEl.innerHTML = '';
+    } else {
+      if (dartSlotsEl) dartSlotsEl.innerHTML =
+        [0,1,2].map(i => `<div class="dart-slot" style="display:inline-block;width:24px;height:4px;border-radius:2px;margin-right:4px;background:${i<dartsThrown?'var(--primary)':'var(--border)'}"></div>`).join('');
+    }
+
+    // Show Next Player button when: 3 darts thrown, OR current player already finished (S&L)
+    // Never show during killer assignment (auto-advances on valid throw)
+    const throwBody = document.getElementById('compThrowBody');
+    const nextBtn = document.getElementById('compNextPlayerBtn');
+    const ds3 = state.mode_display || {};
+    const slFinished = ds3.finished || {};
+    const currentPlayerFinished = isSnakesLadders() && slFinished[state.current_player_id] !== undefined;
+    const hasBust = state && (state.darts_this_turn || []).some(d => d.bust);
+    const limboTurnDone = state.mode === 'limbo' && ds3.turn_done;
+    const showNextPlayer = !isKillerAssignment() && !isSnakesLadders() && (dartsThrown >= 3 || currentPlayerFinished || limboTurnDone || hasBust);
+    if (showNextPlayer) {
+      if (throwBody) throwBody.style.display = 'none';
+      if (nextBtn) nextBtn.style.display = 'block';
+    } else {
+      if (throwBody) throwBody.style.display = '';
+      if (nextBtn) nextBtn.style.display = 'none';
+    }
 
     // Scores table
     const compTable = document.getElementById('compScoresTable');
@@ -1844,6 +1823,96 @@ function checkoutBoxesHtml(hint) {
 
 let selectedRingBtns = {};
 
+function isSnakesLadders() {
+  return state && state.mode === 'snakes_ladders';
+}
+
+function isKillerAssignment() {
+  if (!state || state.mode !== 'killer') return false;
+  const ds = state.mode_display || {};
+  return ds.phase === 'assignment';
+}
+
+function renderRingPanel() {
+  const wrap = document.getElementById('ringButtons');
+  const numWrap = document.getElementById('numberGridWrap');
+  if (!wrap) return;
+
+  if (isKillerAssignment()) {
+    // Show prompt above ring buttons area, then show number grid for input
+    wrap.style.flexWrap = 'wrap';
+    wrap.innerHTML = `<div style="width:100%;text-align:center;padding:8px 8px 4px">
+      <div style="font-size:15px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:var(--primary)">🎯 THROW WITH YOUR OFF HAND</div>
+      <div style="font-size:12px;color:var(--muted);letter-spacing:1px;margin-top:2px">Tap the number you hit to claim it</div>
+    </div>`;
+    // Show number grid
+    if (numWrap) {
+      numWrap.style.display = '';
+      const grid = document.getElementById('numberGrid');
+      if (grid) {
+        const ds = state.mode_display || {};
+        const taken = new Set(Object.values(ds.assigned_numbers || {}));
+        const nums = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20];
+        grid.innerHTML = nums.map(n =>
+          `<button class="throw-btn" onclick="throwDart(${n},'single')">${n}</button>`
+        ).join('');
+      }
+    }
+    return;
+  }
+
+  if (isSnakesLadders()) {
+    numWrap && (numWrap.style.display = 'none');
+    wrap.style.flexWrap = 'wrap';
+
+    const dartsThrown = state ? (state.darts_this_turn || []).length : 0;
+    const currentPid = state && state.current_player_id;
+    const ds = state && state.mode_display || {};
+    const finished = ds.finished || {};
+    const playerDone = currentPid && finished[currentPid] !== undefined;
+
+    const slRings = [
+      { ring: 'double',       label: 'Double',   sub: '🎲 1' },
+      { ring: 'outer_single', label: 'Outer',    sub: '🎲 2' },
+      { ring: 'triple',       label: 'Triple',   sub: '🎲 3' },
+      { ring: 'inner_single', label: 'Inner',    sub: '🎲 4' },
+      { ring: 'bull',         label: 'Bull',     sub: '🎲 5' },
+      { ring: 'bullseye',     label: 'D.Bull',   sub: '🎲 6' },
+    ];
+
+    const dartDots = [0,1,2].map(i =>
+      `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;
+        background:${i < dartsThrown ? 'var(--primary)' : 'var(--border)'};
+        margin:0 3px"></span>`
+    ).join('');
+
+    wrap.innerHTML = `
+      <div style="width:100%;text-align:center;margin-bottom:8px;font-size:12px;color:var(--muted);letter-spacing:1px">
+        DART ${Math.min(dartsThrown + 1, 3)} OF 3 &nbsp; ${dartDots}
+      </div>
+      ${slRings.map(r =>
+        `<button class="throw-btn special" ${playerDone ? 'disabled style="opacity:0.3"' : ''}
+          style="flex:1;min-width:70px;display:flex;flex-direction:column;align-items:center;gap:2px"
+          onclick="throwDart(1,'${r.ring}')">
+          <span style="font-size:13px;font-weight:700">${r.label}</span>
+          <span style="font-size:11px;opacity:0.7">${r.sub}</span>
+        </button>`
+      ).join('')}`;
+  } else {
+    // Standard mode — rebuild number grid to use selectedRing (not hardcoded 'single' from assignment)
+    numWrap && (numWrap.style.display = '');
+    buildNumberGrid();
+    wrap.style.flexWrap = '';
+    wrap.innerHTML = `
+      <button class="throw-btn" id="ring-single" onclick="selectRing('single')" style="flex:1">Single</button>
+      <button class="throw-btn" id="ring-double" onclick="selectRing('double')" style="flex:1">Double</button>
+      <button class="throw-btn" id="ring-triple" onclick="selectRing('triple')" style="flex:1">Triple</button>
+      <button class="throw-btn special" id="ring-bull" onclick="throwDart(25,'bull')" style="flex:1">Bull<br><span style="font-size:10px">25</span></button>
+      <button class="throw-btn special" id="ring-bullseye" onclick="throwDart(25,'bullseye')" style="flex:1">Bull<br><span style="font-size:10px">50</span></button>`;
+    selectRing(selectedRing);
+  }
+}
+
 function selectRing(ring) {
   selectedRing = ring;
   ['single','double','triple'].forEach(r => {
@@ -1942,7 +2011,7 @@ function renderPlayers() {
   }
   list.innerHTML = players.map(p => {
     const av = p.avatar_url
-      ? '<img src="' + avatarSrc(p.avatar_url) + '">'
+      ? '<img src="' + API + p.avatar_url + '">'
       : '<span style="font-family:var(--font-display);font-size:22px;color:#fff;background:' + getAvatarColor(p.name) + ';width:100%;height:100%;display:flex;align-items:center;justify-content:center;border-radius:50%"><span style="transform:translateY(8%);display:block">' + getInitial(p.name) + '</span></span>';
     const sn = p.name.replace(/'/g, '&#39;');
     const pc = p.color || null;
@@ -1952,7 +2021,7 @@ function renderPlayers() {
       + '<div class="player-row-name" style="color:' + (pc || 'var(--white)') + '">' + p.name + '</div>'
       + '<div class="player-row-actions">'
       + '<label class="btn btn-secondary btn-sm" style="cursor:pointer">'
-      + '\u{1F4F7} <input type="file" accept="image/*" capture="environment" style="display:none" onchange="handleAvatarFile(\'' + p.id + '\', this)">'
+      + '\u{1F4F7} <input type="file" accept="image/*" style="display:none" onchange="uploadAvatar(\'' + p.id + '\', this)">'
       + '</label>'
       + (inGame
         ? '<button class="btn btn-sm" style="border-color:var(--primary);color:var(--primary);min-width:36px" onclick="removePlayerFromGame(\'' + p.id + '\')">−</button>'
@@ -2028,7 +2097,7 @@ function renderPlayerCombo(filter) {
   } else {
     list.innerHTML = matches.map((p, i) => {
       const av = p.avatar_url
-        ? `<img src="${avatarSrc(p.avatar_url)}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0">`
+        ? `<img src="${API}${p.avatar_url}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;flex-shrink:0">`
         : `<span style="width:24px;height:24px;border-radius:50%;background:${getAvatarColor(p.name)};font-family:var(--font-display);font-size:14px;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">${getInitial(p.name)}</span>`;
       return `<div class="player-combo-item" data-id="${p.id}" data-name="${p.name}"
         onmousedown="addPlayerToGame('${p.id}');closePlayerCombo()"
@@ -2097,13 +2166,6 @@ async function createPlayer() {
     input.value = '';
     await loadPlayers();
   }
-}
-
-function handleAvatarFile(playerId, input) {
-  const file = input.files[0];
-  if (!file) return;
-  // Reset value so the same file can trigger change again next time
-  openCropModal(playerId, input, file);
 }
 
 async function uploadAvatar(playerId, input) {
@@ -2655,7 +2717,7 @@ function renderPodium() {
     const fontSize = rank === 0 ? 36 : 26;
     const nameSize = rank === 0 ? 22 : 16;
     const av = p.avatar_url
-      ? '<img src="' + avatarSrc(p.avatar_url) + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;border:3px solid ' + color + '">'
+      ? '<img src="' + API + p.avatar_url + '" style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;object-fit:cover;border:3px solid ' + color + '">'
       : '<div style="width:' + size + 'px;height:' + size + 'px;border-radius:50%;background:' + getAvatarColor(p.name) + ';display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:' + fontSize + 'px;color:#fff;border:3px solid ' + color + '">' + getInitial(p.name) + '</div>';
     return '<div class="podium-slot">'
       + av
@@ -2689,7 +2751,7 @@ function renderPodium() {
       const place = placeOf(p);
       const mc = pcOf(place);
       const av = p.avatar_url
-        ? '<img src="' + avatarSrc(p.avatar_url) + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover">'
+        ? '<img src="' + API + p.avatar_url + '" style="width:24px;height:24px;border-radius:50%;object-fit:cover">'
         : '<div style="width:24px;height:24px;border-radius:50%;background:' + getAvatarColor(p.name) + ';display:flex;align-items:center;justify-content:center;font-family:var(--font-display);font-size:12px;color:#fff">' + getInitial(p.name) + '</div>';
       html += '<div class="podium-rest-row">'
         + '<span style="font-family:var(--font-display);font-size:16px;color:' + mc + ';width:32px">' + (ordinals[place-1]||place+'TH') + '</span>'
@@ -2826,21 +2888,16 @@ function getAvatarColor(name) {
   return colors[h % colors.length];
 }
 
-// Cache-bust avatar URLs so the browser always loads the latest image
-function avatarSrc(url) {
-  return `${API}${url}?v=${Date.now()}`;
-}
-
 // For use inside .player-avatar divs
 function avatarHtml(player) {
-  if (player.avatar_url) return `<img src="${avatarSrc(player.avatar_url)}" alt="${player.name}">`;
+  if (player.avatar_url) return `<img src="${API}${player.avatar_url}" alt="${player.name}">`;
   const color = getAvatarColor(player.name);
   return `<span style="font-family:var(--font-display);font-size:38px;color:#fff;line-height:1;background:${color};width:100%;height:100%;display:flex;align-items:center;justify-content:center;border-radius:50%"><span style="transform:translateY(8%);display:block">${getInitial(player.name)}</span></span>`;
 }
 
 // For use in small inline chips (player pool, selected players)
 function chipAvatarHtml(player) {
-  if (player.avatar_url) return `<img src="${avatarSrc(player.avatar_url)}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;">`;
+  if (player.avatar_url) return `<img src="${API}${player.avatar_url}" style="width:20px;height:20px;border-radius:50%;object-fit:cover;">`;
   const color = getAvatarColor(player.name);
   return `<span style="font-family:var(--font-display);font-size:15px;color:#fff;background:${color};width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0"><span style="transform:translateY(8%);display:block">${getInitial(player.name)}</span></span>`;
 }
@@ -2848,7 +2905,7 @@ function chipAvatarHtml(player) {
 async function init() {
   connectWS();
   buildNumberGrid();
-  selectRing('single');
+  renderRingPanel();
 
   const current = await api('GET', '/game/state');
   if (current && !current.detail && !current.game_over) {
@@ -2861,166 +2918,6 @@ async function init() {
   await loadHistory();
 }
 init();
-</script>
-
-<!-- ── AVATAR CROP MODAL ─────────────────────────────────────────────────── -->
-<div id="avatarCropModal">
-  <div class="crop-title">Position your photo</div>
-  <div class="crop-viewport" id="cropViewport">
-    <img id="cropImg" draggable="false">
-  </div>
-  <div class="crop-hint">Drag to reposition · Pinch or scroll to zoom</div>
-  <div class="crop-actions">
-    <button class="btn btn-secondary" onclick="closeCropModal()">Cancel</button>
-    <button class="btn" onclick="saveCrop()">Use Photo</button>
-  </div>
-</div>
-
-<script>
-// ── AVATAR CROP ────────────────────────────────────────────────────────────────
-let _cropPlayerId = null;
-let _cropInput = null;
-
-// Transform state
-let cropX = 0, cropY = 0, cropScale = 1;
-let cropImgNaturalW = 0, cropImgNaturalH = 0;
-const VIEWPORT_SIZE = 280;
-
-function openCropModal(playerId, input, file) {
-  _cropPlayerId = playerId;
-  _cropInput = input;
-  const url = URL.createObjectURL(file);
-  const img = document.getElementById('cropImg');
-  img.onload = () => {
-    cropImgNaturalW = img.naturalWidth;
-    cropImgNaturalH = img.naturalHeight;
-    // Fit the shorter side to viewport, center
-    const fitScale = VIEWPORT_SIZE / Math.min(cropImgNaturalW, cropImgNaturalH);
-    cropScale = fitScale;
-    cropX = (VIEWPORT_SIZE - cropImgNaturalW * cropScale) / 2;
-    cropY = (VIEWPORT_SIZE - cropImgNaturalH * cropScale) / 2;
-    applyCropTransform();
-  };
-  img.src = url;
-  document.getElementById('avatarCropModal').classList.add('open');
-}
-
-function closeCropModal() {
-  document.getElementById('avatarCropModal').classList.remove('open');
-  // Reset file input so the same file can be re-selected
-  if (_cropInput) { _cropInput.value = ''; _cropInput = null; }
-  _cropPlayerId = null;
-}
-
-function applyCropTransform() {
-  const img = document.getElementById('cropImg');
-  img.style.width = (cropImgNaturalW * cropScale) + 'px';
-  img.style.height = (cropImgNaturalH * cropScale) + 'px';
-  img.style.transform = `translate(${cropX}px, ${cropY}px)`;
-}
-
-// Draw the cropped circle onto a canvas, export as blob, upload
-async function saveCrop() {
-  const img = document.getElementById('cropImg');
-  const OUTPUT = 400;
-  const canvas = document.createElement('canvas');
-  canvas.width = OUTPUT; canvas.height = OUTPUT;
-  const ctx = canvas.getContext('2d');
-  // Clip to circle
-  ctx.beginPath();
-  ctx.arc(OUTPUT/2, OUTPUT/2, OUTPUT/2, 0, Math.PI*2);
-  ctx.clip();
-  // cropX/cropY = where the image top-left sits in the viewport.
-  // So the viewport's top-left maps to source pixel (-cropX/cropScale, -cropY/cropScale).
-  const sx = -cropX / cropScale;
-  const sy = -cropY / cropScale;
-  const sw = VIEWPORT_SIZE / cropScale;
-  const sh = VIEWPORT_SIZE / cropScale;
-  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, OUTPUT, OUTPUT);
-  canvas.toBlob(async (blob) => {
-    const form = new FormData();
-    form.append('file', blob, 'avatar.jpg');
-    await fetch(`${API}/players/${_cropPlayerId}/avatar`, { method: 'POST', body: form });
-    closeCropModal();
-    await loadPlayers();
-  }, 'image/jpeg', 0.92);
-}
-
-// ── Drag to pan ────────────────────────────────────────────────────────────────
-let _dragging = false, _dragStartX = 0, _dragStartY = 0, _dragOriginX = 0, _dragOriginY = 0;
-
-const vp = document.getElementById('cropViewport');
-
-vp.addEventListener('pointerdown', e => {
-  if (e.touches && e.touches.length > 1) return; // let pinch handle it
-  _dragging = true;
-  _dragStartX = e.clientX;
-  _dragStartY = e.clientY;
-  _dragOriginX = cropX;
-  _dragOriginY = cropY;
-  vp.setPointerCapture(e.pointerId);
-});
-
-vp.addEventListener('pointermove', e => {
-  if (!_dragging) return;
-  cropX = _dragOriginX + (e.clientX - _dragStartX);
-  cropY = _dragOriginY + (e.clientY - _dragStartY);
-  applyCropTransform();
-});
-
-vp.addEventListener('pointerup', () => { _dragging = false; });
-vp.addEventListener('pointercancel', () => { _dragging = false; });
-
-// ── Scroll to zoom ─────────────────────────────────────────────────────────────
-vp.addEventListener('wheel', e => {
-  e.preventDefault();
-  const delta = e.deltaY > 0 ? 0.92 : 1.08;
-  zoomAround(VIEWPORT_SIZE/2, VIEWPORT_SIZE/2, delta);
-}, { passive: false });
-
-// ── Pinch to zoom ─────────────────────────────────────────────────────────────
-let _lastPinchDist = null;
-
-vp.addEventListener('touchstart', e => {
-  if (e.touches.length === 2) {
-    _dragging = false;
-    _lastPinchDist = pinchDist(e.touches);
-  }
-}, { passive: true });
-
-vp.addEventListener('touchmove', e => {
-  if (e.touches.length === 2) {
-    e.preventDefault();
-    const dist = pinchDist(e.touches);
-    if (_lastPinchDist) {
-      const delta = dist / _lastPinchDist;
-      const cx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      const cy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      const rect = vp.getBoundingClientRect();
-      zoomAround(cx - rect.left, cy - rect.top, delta);
-    }
-    _lastPinchDist = dist;
-  }
-}, { passive: false });
-
-vp.addEventListener('touchend', () => { _lastPinchDist = null; });
-
-function pinchDist(touches) {
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.sqrt(dx*dx + dy*dy);
-}
-
-function zoomAround(pivotX, pivotY, delta) {
-  const minScale = VIEWPORT_SIZE / Math.max(cropImgNaturalW, cropImgNaturalH);
-  const newScale = Math.max(minScale, Math.min(cropScale * delta, 8));
-  const scaleChange = newScale / cropScale;
-  // Adjust position so the pivot point stays fixed
-  cropX = pivotX - scaleChange * (pivotX - cropX);
-  cropY = pivotY - scaleChange * (pivotY - cropY);
-  cropScale = newScale;
-  applyCropTransform();
-}
 </script>
 </body>
 </html>
