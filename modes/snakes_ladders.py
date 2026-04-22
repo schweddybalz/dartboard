@@ -154,14 +154,11 @@ class SnakesLaddersMode(BaseMode):
 
         self._events = [event]
 
-        # Advance turn on 3rd dart or when player finishes
-        dart_num = len(state.get("darts_this_turn", [])) + 1
-        should_advance = advance_turn or dart_num >= 3
-
+        # Only auto-advance when player finishes — normal turn end via companion Next Player button
         return {
             "player_scores": scores,
             "scored": die,
-            "advance_turn": should_advance,
+            "advance_turn": advance_turn,
             "message": announcement or f"{player['name']} rolls {die}, moves {old_pos}→{self._positions[pid]}",
             "announcement": announcement,
         }

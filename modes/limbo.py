@@ -45,6 +45,14 @@ class LimboMode(BaseMode):
                 "message": f"{player['name']} is eliminated — skipping",
             }
 
+        # If turn already resolved, ignore extra darts
+        if self._turn_ended.get(pid):
+            return {
+                "player_scores": scores,
+                "scored": 0,
+                "message": "Turn already done — press Next Player",
+            }
+
         # Miss counts as 25
         dart_value = 25 if ring == "miss" else raw_score
         self._turn_total[pid] = self._turn_total.get(pid, 0) + dart_value
@@ -79,6 +87,7 @@ class LimboMode(BaseMode):
                     "player_scores": scores,
                     "scored": dart_value,
                     "advance_turn": False,
+                    "no_auto_advance": True,
                     "message": f"{player['name']} scored {turn_score} — ELIMINATED!",
                     "announcement": f"💀 {player['name']} hit the bar with {turn_score}! Out of lives — eliminated! Bar resets to {self.starting_bar}.",
                     "life_lost": {"player_id": pid, "player_name": player['name'], "lives_remaining": 0, "starting_lives": self.starting_lives, "eliminated": True, "game_over": alive_count <= 1},
@@ -87,6 +96,7 @@ class LimboMode(BaseMode):
                 "player_scores": scores,
                 "scored": dart_value,
                 "advance_turn": False,
+                "no_auto_advance": True,
                 "message": f"{player['name']} scored {turn_score} — hit the bar! {self._lives[pid]} lives left. Bar resets.",
                 "announcement": f"💔 {player['name']} hit the bar with {turn_score}! Loses a life ({self._lives[pid]} left). Bar resets to {self.starting_bar}.",
                 "life_lost": {"player_id": pid, "player_name": player['name'], "lives_remaining": self._lives[pid], "starting_lives": self.starting_lives, "eliminated": self._lives[pid] == 0, "game_over": False},
@@ -99,6 +109,8 @@ class LimboMode(BaseMode):
                 "player_scores": scores,
                 "scored": dart_value,
                 "advance_turn": False,
+                "no_auto_advance": True,
+                "play_good": True,
                 "message": f"{player['name']} scored {turn_score} — safe! Bar drops from {old_bar} to {turn_score}.",
                 "announcement": f"✅ {player['name']} scores {turn_score}. Under the bar! Bar drops to {turn_score}.",
             }
@@ -115,7 +127,6 @@ class LimboMode(BaseMode):
         pid = state["players"][state["current_player_idx"]]["id"]
         darts = state.get("darts_this_turn", [])
         turn_done = self._turn_ended.get(pid, False) or len(darts) >= self.darts_per_turn
-        print(f"[LIMBO] get_display_state pid={pid[:8]} turn_ended={self._turn_ended.get(pid)} darts={len(darts)} turn_done={turn_done}", flush=True)
         return {
             "current_bar": self._current_bar,
             "turn_start_bar": self._turn_start_bar,

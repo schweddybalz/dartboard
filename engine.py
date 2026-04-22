@@ -43,6 +43,7 @@ class GameEngine:
         self._state: Optional[dict] = None
         self._mode_instance = None
         self._history: list[dict] = []   # undo stack
+        self._pending_turn: bool = False  # True when turn advanced but companion hasn't confirmed yet
 
     # ── Mode loading ─────────────────────────────────────────────────────────
 
@@ -100,6 +101,7 @@ class GameEngine:
             "turn_history": [],
         }
         self._history = []
+        self._pending_turn = False
         # Apply initial turn start so team games start on the right player
         if hasattr(self._mode_instance, "on_turn_start"):
             self._mode_instance.on_turn_start(self._state)
@@ -173,20 +175,44 @@ class GameEngine:
             state["winner_id"] = result.get("winner_id", current_player["id"])
             self.db.end_game(state["game_id"], state["winner_id"], self._public_state())
 
-        # Only advance when mode explicitly requests it (e.g. S&L finish, killer assignment)
-        # Normal turn end is driven by companion's Next Player button → /game/next-turn
-        advance = result.get("advance_turn", False)
-        if advance:
+        # Advance turn after 3 darts or bust or mode says so
+        # Modes can set no_auto_advance=True to block the dart_num>=3 auto-advance
+        advance = result.get("advance_turn", False) or result.get("bust", False)
+        no_auto = result.get("no_auto_advance", False)
+
+        # Capture state BEFORE advance — achievements and current player should reflect the thrower
+        pre_advance_display = self._mode_instance.get_display_state(state) if self._mode_instance else {}
+        pre_advance_player_id   = state["players"][state["current_player_idx"]]["id"]
+        pre_advance_player_name = state["players"][state["current_player_idx"]]["name"]
+        pre_advance_darts       = list(state["darts_this_turn"])
+
+        if (dart_num >= 3 and not no_auto) or advance:
             if not state["game_over"]:
                 self._advance_turn()
+                self._pending_turn = True
 
         announcement = self._build_announcement(result, dart_record, state)
 
-        return {
-            **self._public_state(),
+        # Build public state then patch in pre-advance values so dart_scored
+        # still shows the thrower as current player (TV won't flip until turn_changed)
+        pub = self._public_state()
+        pub["mode_display"] = pre_advance_display
+        if self._pending_turn:
+            pub["current_player_id"]   = pre_advance_player_id
+            pub["current_player_name"] = pre_advance_player_name
+            pub["darts_this_turn"]     = pre_advance_darts
+
+        ret = {
+            **pub,
             "dart": dart_record,
             "announcement": announcement,
+            "pending_turn": self._pending_turn,
         }
+        if result.get("play_good"):
+            ret["play_good"] = True
+        if result.get("life_lost"):
+            ret["life_lost"] = result["life_lost"]
+        return ret
 
     def _advance_turn(self):
         state = self._state
@@ -219,13 +245,17 @@ class GameEngine:
     def next_turn(self) -> dict:
         if not self._state or self._state["game_over"]:
             raise ValueError("No active game")
-        self._advance_turn()
+        if not self._pending_turn:
+            # Turn hasn't auto-advanced yet (manual modes like limbo) — advance now
+            self._advance_turn()
+        self._pending_turn = False
         return self._public_state()
 
     def undo(self) -> dict:
         if not self._history:
             raise ValueError("Nothing to undo")
         self._state = self._history.pop()
+        self._pending_turn = False
         # Re-sync mode instance scores from restored state
         if hasattr(self._mode_instance, "restore_state"):
             self._mode_instance.restore_state(self._state)

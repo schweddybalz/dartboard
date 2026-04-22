@@ -137,6 +137,13 @@ def player_stats(player_id: str):
         raise HTTPException(404, "Player not found")
     return stats
 
+@app.get("/players/{player_id}/dart-stats")
+def player_dart_stats(player_id: str):
+    """Return PPR and MPR all-time averages for a player."""
+    ppr = db.get_ppr_alltime(player_id)
+    mpr = db.get_mpr_alltime(player_id)
+    return {"player_id": player_id, "ppr_alltime": ppr, "mpr_alltime": mpr}
+
 @app.delete("/players/{player_id}")
 def delete_player(player_id: str):
     deleted = db.delete_player(player_id)

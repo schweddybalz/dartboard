@@ -989,6 +989,7 @@
     0%   { background-position: 200% center; }
     100% { background-position: -200% center; }
   }
+  @keyframes slCelebPop {
     from { transform: scale(0.5); opacity: 0; }
     to   { transform: scale(1);   opacity: 1; }
   }
@@ -996,6 +997,7 @@
   .sl-celeb-place { font-size: 22px; color: #f59e0b; letter-spacing: 3px; font-weight: 700; text-transform: uppercase; margin-bottom: 8px; }
   .sl-celeb-name  { font-size: 56px; font-family: var(--font-display); letter-spacing: 4px; text-transform: uppercase; }
   .sl-celeb-sub   { font-size: 18px; color: var(--muted); letter-spacing: 2px; margin-top: 8px; text-transform: uppercase; }
+  #slBoardMini {
     background: var(--card); border: 1px solid var(--border); border-radius: 16px;
     padding: 8px; aspect-ratio: 1; flex-shrink: 0;
   }
@@ -1128,6 +1130,7 @@ let dartHits = {};  // {playerId: [{x,y,segment,ring}]} for SVG overlay
 let _slPrevFinishCount = 0; // S&L: track finishers to detect new ones
 let _limboLifeTimer = null;
 let _slNotifTimer = null;
+let _limboBarDisplay = null; // cached bar value — only updates on turn change, not mid-turn
 
 // ── WEBSOCKET ─────────────────────────────────────────────────────────────────
 // Unlock audio playback — try multiple approaches for Chromium on Pi
@@ -1163,7 +1166,6 @@ function unlockAudio() {
 }
 
 function playAudio(url, startSec, durationSec) {
-  console.log('[AUDIO] playing:', url, 'start:', startSec, 'dur:', durationSec);
   try {
     if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
 
@@ -1229,10 +1231,15 @@ function handleEvent(event, payload) {
       console.log('[TV] game_started received, state:', state && state.mode, state && state.current_player_id);
       dartHits = {};
       feedItems = [];
+      _allTimeStats = {};
       _slAnimPositions = {};
       _slLayoutMap = null;
       _slBgCanvas = null; _slBgKey = '';
       _slPrevFinishCount = 0;
+      _limboBarDisplay = (state && state.mode === 'limbo')
+        ? (state.mode_display?.current_bar ?? null)
+        : null;
+      showGameOver._fired = false;
       const feed = document.getElementById('tvDartsFeed');
       if (feed) feed.innerHTML = '';
       // Clean up any lingering overlays from previous game
@@ -1242,24 +1249,37 @@ function handleEvent(event, payload) {
         if (el) el.remove();
       });
       if (_limboLifeTimer) { clearTimeout(_limboLifeTimer); _limboLifeTimer = null; }
+      // Load alltime stats for all players in background
+      if (state && state.players) {
+        loadAllTimeStats(state.players.map(p => p.id));
+      }
       // Render immediately with the payload state, then show first player animation
       console.log('[TV] calling renderAll from game_started, state.mode=', state && state.mode);
       renderAll();
       if (state && state.current_player_name) {
-        setTimeout(() => showNextPlayerAnim(state.current_player_name, playerColorOf(state.current_player_id)), 400);
+        setTimeout(() => showNextPlayerAnim(state.current_player_name, turnColorOf(state.current_player_id)), 400);
       }
       return;  // skip the renderAll() at the bottom
+    }
+    if (event === 'dart_undone') {
+      if (feedItems.length) feedItems.shift();
     }
     if (event === 'dart_scored' && payload.dart) {
       addDartToFeed(payload.dart);
       addHitMarker(payload.dart.segment, payload.dart.ring, payload.dart.player_id);
-      // Play bad audio on bust
+      // Synth dart sound — skip if kick down, or game-winning dart (winner audio handles it)
+      const isKickDown = state && state.mode === 'kick_down' && payload.kicked_players && payload.kicked_players.length;
+      const isGameWon = state && state.game_over;
+      if (!isKickDown && !isGameWon) synthDartSound(payload.dart);
       if (payload.dart.bust) {
         playRandomAudio(_badAudioFiles);
       }
-      // Limbo life lost animation — suppress ALL announcements for limbo bar hits
+      // Limbo life lost / safe landing
       if (state && state.mode === 'limbo' && payload.life_lost) {
         setTimeout(() => showLimboLifeLost(payload.life_lost), 200);
+      } else if (state && state.mode === 'limbo' && payload.play_good) {
+        try { playRandomAudio(_goodAudioFiles); } catch(e) {}
+        if (payload.announcement) showAnnouncement(payload.announcement);
       } else if (payload.announcement) {
         const isSLSlide = state && state.mode === 'snakes_ladders' &&
           (state.mode_display?.events?.[0]?.slide_type);
@@ -1270,19 +1290,16 @@ function handleEvent(event, payload) {
       if (state && (state.mode === 'shanghai' || state.mode === 'cricket')) {
         const ds0 = state.mode_display || {};
         if (ds0.pun_marks >= 2) {
-          const subtitle = null;
-          setTimeout(() => showShanghaiPun(ds0.pun_marks, subtitle), 300);
+          setTimeout(() => showShanghaiPun(ds0.pun_marks, null), 300);
         }
       }
-      // X01 achievement — fire on 3rd dart, but not if game is over
-      if (state && state.mode === 'x01' && !state.game_over) {
+      // X01 achievement — fire on 3rd dart, but not if bust (show even on game-winning dart)
+      if (state && state.mode === 'x01') {
         const ds0 = state.mode_display || {};
-        console.log('[TV] x01 dart_scored, darts:', state.darts_this_turn?.length, 'achievement:', ds0.achievement);
-        if (ds0.achievement) {
-          setTimeout(() => {
-            showX01Achievement(ds0.achievement);
-            playRandomAudio(_goodAudioFiles);
-          }, 300);
+        const lastDart = state.darts_this_turn?.at(-1);
+        const wasBust = lastDart?.bust === true;
+        if (ds0.achievement && !wasBust) {
+          setTimeout(() => showX01Achievement(ds0.achievement), 300);
         }
       }
       if (state && state.mode === 'snakes_ladders') {
@@ -1290,21 +1307,35 @@ function handleEvent(event, payload) {
         slHandleDartEvent(state, () => renderAll());
         return;
       }
+      // Kick Down: flash kicked players and play fanfare
+      if (state && state.mode === 'kick_down' && payload.kicked_players && payload.kicked_players.length) {
+        payload.kicked_players.forEach(name => showKickDownFlash(name));
+        synthBullseye();
+      }
     }
     // For S&L, block turn_changed renders while animation is running
     // (the animation's onDone callback will call renderAll when ready)
     if (state && state.mode === 'snakes_ladders' && _slAnimating && event === 'turn_changed') {
       return;
     }
+    // Update limbo bar display cache at turn boundaries
+    if (state && state.mode === 'limbo' && (event === 'turn_changed' || event === 'state_sync')) {
+      _limboBarDisplay = state.mode_display?.current_bar ?? null;
+    }
     // Show next player animation on turn change (not on game start or game over)
     if (event === 'turn_changed' && state && !state.game_over && state.current_player_name) {
       const ds0 = state.mode_display || {};
       if (!(state.mode === 'killer' && ds0.phase === 'assignment')) {
-        showNextPlayerAnim(state.current_player_name, playerColorOf(state.current_player_id));
+        showNextPlayerAnim(state.current_player_name, turnColorOf(state.current_player_id));
+        synthNextPlayer();
       }
     }
     if (event === 'game_over') {
       showGameOver(payload);
+      // Re-fetch alltime stats now that this game is complete in the DB
+      if (state && state.players) {
+        loadAllTimeStats(state.players.map(p => p.id));
+      }
     }
     renderAll();
   }
@@ -1367,10 +1398,23 @@ function playerColorOf(pid) {
   const teams = ds.teams;
   if (teams && teams.length) {
     const idx = teams.findIndex(t => t.player_ids.includes(pid));
-    return idx >= 0 ? palette[idx % palette.length] : 'var(--muted)';
+    if (idx >= 0) return (teams[idx].color) || palette[idx % palette.length];
+    return 'var(--muted)';
   }
   const idx = (state && state.players || []).findIndex(p => p.id === pid);
   return idx >= 0 ? palette[idx % palette.length] : 'var(--muted)';
+}
+
+// In team games, returns the team color for the player's team; otherwise player color
+function turnColorOf(pid) {
+  const ds = (state && state.mode_display) || {};
+  const teams = ds.teams;
+  if (teams && teams.length) {
+    const palette = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
+    const idx = teams.findIndex(t => t.player_ids && t.player_ids.includes(pid));
+    if (idx >= 0) return (teams[idx].color) || palette[idx % palette.length];
+  }
+  return playerColorOf(pid);
 }
 
 function renderTV() {
@@ -1383,7 +1427,6 @@ function renderTV() {
     game.style.display = 'none';
     return;
   }
-  console.log('[TV] renderTV: state.mode=', state.mode, 'game_over=', state.game_over);
 
   // Show/hide winner banner
   const winnerBanner = document.getElementById('tvWinnerBanner');
@@ -1526,6 +1569,9 @@ function renderTV() {
         subContent = `<div class="player-sub">remaining</div>`;
         const co = normalizeCheckoutHint(ds.checkouts && ds.checkouts[p.id]);
         subContent += `<div style="min-height:32px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:5px;margin-top:4px">${co ? checkoutBoxesHtml(co) : ''}</div>`;
+      } else if (mode === 'kick_down') {
+        const remaining = (ds.target || 301) - score;
+        subContent = `<div class="player-sub">${remaining > 0 ? remaining + ' to go' : 'WINNER!'}</div>`;
       } else if (mode === 'killer') {
         const isKiller = ds.is_killer && ds.is_killer[p.id];
         const isElim = ds.eliminated && ds.eliminated[p.id];
@@ -1672,7 +1718,7 @@ function renderTV() {
       };
       const teamRanks = computeRanks(ranked.map(t => t.team_id), teamScoreOf);
       table.innerHTML = ranked.map((t, i) => {
-        const color = teamColors[ds.teams.indexOf(t) % teamColors.length];
+        const color = t.color || teamColors[ds.teams.indexOf(t) % teamColors.length];
         const place = teamRanks[i].place;
         const mc = medalColorOf(place);
         const members = state.players.filter(p => t.player_ids.includes(p.id));
@@ -1723,7 +1769,7 @@ function renderTV() {
     }
   } else if (['cricket','x01'].includes(mode) && ds.teams && ds.teams.length) {
     table.innerHTML = ds.teams.map((t, i) => {
-      const color = teamColors[i % teamColors.length];
+      const color = t.color || teamColors[i % teamColors.length];
       const isActiveTeam = t.player_ids.includes(state.current_player_id);
       const members = state.players.filter(p => t.player_ids.includes(p.id));
       const teamRow = `<tr>
@@ -1885,10 +1931,217 @@ async function loadAudioLists() {
 }
 loadAudioLists();
 
+// ── Player stats cache ────────────────────────────────────────────────────────
+let _allTimeStats = {};  // { pid: { ppr_alltime, mpr_alltime } }
+
+async function loadAllTimeStats(playerIds) {
+  await Promise.all(playerIds.map(async pid => {
+    try {
+      const data = await fetch(`/players/${pid}/dart-stats`).then(r => r.json());
+      _allTimeStats[pid] = data;
+    } catch(e) {}
+  }));
+}
+
 function playRandomAudio(files) {
   if (!files || !files.length) return;
   const url = files[Math.floor(Math.random() * files.length)];
   playAudio(url);
+}
+
+// ── Synth sound engine ────────────────────────────────────────────────────────
+const _synth = new (window.AudioContext || window.webkitAudioContext)();
+const _HORN_ROOT = 350;
+
+// Browsers suspend AudioContext until a user gesture — resume on any interaction
+function _synthUnlock() {
+  if (_synth.state === 'suspended') {
+    _synth.resume().then(() => console.log('[synth] AudioContext resumed'));
+  }
+}
+document.addEventListener('click', _synthUnlock, { once: false });
+document.addEventListener('touchstart', _synthUnlock, { once: false });
+document.addEventListener('keydown', _synthUnlock, { once: false });
+
+function _synthMaster(gain) {
+  const g = _synth.createGain();
+  g.gain.value = gain != null ? gain : 0.7;
+  g.connect(_synth.destination);
+  return g;
+}
+
+function _synthNoise(t, dur, gain, cutoff, dest) {
+  const buf = _synth.createBuffer(1, Math.ceil(_synth.sampleRate * dur), _synth.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = _synth.createBufferSource(); src.buffer = buf;
+  const f = _synth.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cutoff;
+  const g = _synth.createGain();
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f); f.connect(g); g.connect(dest);
+  src.start(t); src.stop(t + dur);
+}
+
+function _synthHorn(t, dest, rootFreq, dur, gainVal) {
+  [rootFreq, rootFreq * 1.5].forEach((freq, fi) => {
+    [-4, 0, 4].forEach(detune => {
+      const o = _synth.createOscillator();
+      o.type = 'square'; o.frequency.value = freq; o.detune.value = detune;
+      const ws = _synth.createWaveShaper();
+      const curve = new Float32Array(256);
+      for (let i = 0; i < 256; i++) { const x = (i * 2) / 256 - 1; curve[i] = Math.tanh(x * 3.5); }
+      ws.curve = curve;
+      const filt = _synth.createBiquadFilter();
+      filt.type = 'lowpass';
+      filt.frequency.setValueAtTime(3200, t); filt.frequency.exponentialRampToValueAtTime(2000, t + dur);
+      filt.Q.value = 1.5;
+      const g = _synth.createGain();
+      const gv = gainVal * (fi === 0 ? 0.6 : 0.45) * 0.33;
+      g.gain.setValueAtTime(0.001, t); g.gain.linearRampToValueAtTime(gv, t + 0.012);
+      g.gain.setValueAtTime(gv, t + dur - 0.04); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(ws); ws.connect(filt); filt.connect(g); g.connect(dest);
+      o.start(t); o.stop(t + dur + 0.05);
+    });
+    const sub = _synth.createOscillator(); sub.type = 'sine'; sub.frequency.value = freq * 0.5;
+    const sg = _synth.createGain(); const sv = gainVal * 0.08;
+    sg.gain.setValueAtTime(0.001, t); sg.gain.linearRampToValueAtTime(sv, t + 0.015);
+    sg.gain.setValueAtTime(sv, t + dur - 0.04); sg.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    sub.connect(sg); sg.connect(dest); sub.start(t); sub.stop(t + dur + 0.05);
+  });
+}
+
+function synthThud() {
+  const m = _synthMaster(); const t = _synth.currentTime;
+  _synthNoise(t, 0.18, 0.9, 300, m);
+  const o = _synth.createOscillator(); const g = _synth.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(80, t); o.frequency.exponentialRampToValueAtTime(40, t + 0.2);
+  g.gain.setValueAtTime(0.5, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+  o.connect(g); g.connect(m); o.start(t); o.stop(t + 0.25);
+}
+
+function synthSingle() {
+  const m = _synthMaster(); const t = _synth.currentTime;
+  _synthHorn(t, m, _HORN_ROOT, 0.18, 0.55);
+}
+
+function synthDouble() {
+  const m = _synthMaster(); const t = _synth.currentTime;
+  _synthHorn(t, m, _HORN_ROOT, 0.13, 0.55);
+  _synthHorn(t + 0.17, m, _HORN_ROOT, 0.13, 0.55);
+}
+
+function synthTriple() {
+  const m = _synthMaster(); const t = _synth.currentTime;
+  _synthHorn(t, m, _HORN_ROOT, 0.12, 0.55);
+  _synthHorn(t + 0.15, m, _HORN_ROOT, 0.12, 0.55);
+  _synthHorn(t + 0.30, m, _HORN_ROOT, 0.12, 0.55);
+}
+
+function synthBull() {
+  const m = _synthMaster(); const t = _synth.currentTime;
+  _synthHorn(t, m, _HORN_ROOT, 0.18, 0.6);
+  _synthHorn(t + 0.22, m, _HORN_ROOT * 1.5, 0.24, 0.65);
+  const sh = _synth.createOscillator(); const sg = _synth.createGain();
+  sh.type = 'sine'; sh.frequency.value = _HORN_ROOT * 4;
+  sg.gain.setValueAtTime(0.001, t + 0.2); sg.gain.linearRampToValueAtTime(0.18, t + 0.25);
+  sg.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+  sh.connect(sg); sg.connect(m); sh.start(t + 0.2); sh.stop(t + 0.6);
+}
+
+function synthBullseye() {
+  const m = _synthMaster(); const t = _synth.currentTime;
+  _synthNoise(t, 0.1, 0.6, 500, m);
+  const boom = _synth.createOscillator(); const bg = _synth.createGain();
+  boom.type = 'sine'; boom.frequency.setValueAtTime(90, t); boom.frequency.exponentialRampToValueAtTime(40, t + 0.3);
+  bg.gain.setValueAtTime(0.7, t); bg.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+  boom.connect(bg); bg.connect(m); boom.start(t); boom.stop(t + 0.4);
+  [_HORN_ROOT, _HORN_ROOT * 1.25, _HORN_ROOT * 1.5, _HORN_ROOT * 2].forEach((freq, i) => {
+    _synthHorn(t + 0.08 + i * 0.18, m, freq, 0.22, 0.6);
+  });
+  [_HORN_ROOT * 4, _HORN_ROOT * 5, _HORN_ROOT * 6].forEach((freq, i) => {
+    const o = _synth.createOscillator(); const g = _synth.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    const s = t + 0.7 + i * 0.06;
+    g.gain.setValueAtTime(0.001, s); g.gain.linearRampToValueAtTime(0.22, s + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, s + 0.4);
+    o.connect(g); g.connect(m); o.start(s); o.stop(s + 0.45);
+  });
+}
+
+// N ascending beeps for S&L die rolls (1–6 spaces)
+function synthBeeps(n) {
+  if (!n || n < 1) { synthThud(); return; }
+  const m = _synthMaster(); const t = _synth.currentTime;
+  const baseNote = 660; // E5 — bright and clear
+  for (let i = 0; i < n; i++) {
+    const freq = baseNote * Math.pow(1.08, i); // each beep slightly higher
+    const s = t + i * 0.11;
+    const o = _synth.createOscillator(); const g = _synth.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0, s);
+    g.gain.linearRampToValueAtTime(0.45, s + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, s + 0.09);
+    o.connect(g); g.connect(m); o.start(s); o.stop(s + 0.1);
+  }
+}
+
+function synthNextPlayer() {
+  const m = _synthMaster(); const t = _synth.currentTime;
+  [523, 659, 784].forEach((freq, i) => {
+    const o = _synth.createOscillator(); const g = _synth.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    const s = t + i * 0.13;
+    g.gain.setValueAtTime(0, s); g.gain.linearRampToValueAtTime(0.5, s + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, s + 0.35);
+    o.connect(g); g.connect(m); o.start(s); o.stop(s + 0.4);
+    const o2 = _synth.createOscillator(); const g2 = _synth.createGain();
+    o2.type = 'sine'; o2.frequency.value = freq * 2;
+    g2.gain.setValueAtTime(0, s); g2.gain.linearRampToValueAtTime(0.12, s + 0.01);
+    g2.gain.exponentialRampToValueAtTime(0.0001, s + 0.2);
+    o2.connect(g2); g2.connect(m); o2.start(s); o2.stop(s + 0.25);
+  });
+}
+
+// Decide which synth sound to play for a dart hit
+function synthDartSound(dart) {
+  if (!dart || !state) return;
+  const ring = dart.ring || '';
+  const seg = dart.segment;
+  const mode = state.mode;
+  const ds = state.mode_display || {};
+
+  // Miss always thuds
+  if (ring === 'miss') { synthThud(); return; }
+  // Bust always thuds
+  if (dart.bust) { synthThud(); return; }
+
+  // S&L: beep once per space moved (die value = scored), thud on 0
+  if (mode === 'snakes_ladders') {
+    const die = dart.scored || 0;
+    if (die === 0) { synthThud(); return; }
+    synthBeeps(die);
+    return;
+  }
+
+  // Bull and bullseye get fanfare if they scored
+  if (ring === 'bullseye' && dart.scored > 0) { synthBullseye(); return; }
+  if (ring === 'bull' && dart.scored > 0) { synthBull(); return; }
+
+  if (mode === 'cricket') {
+    const cricketNums = new Set([15,16,17,18,19,20,25]);
+    const globallyClosed = new Set(ds.globally_closed || []);
+    // Thud if not a cricket number or globally closed
+    if (!cricketNums.has(seg) || globallyClosed.has(seg)) { synthThud(); return; }
+    // Counts — fall through to ring-based sound below
+  } else {
+    // All other modes: thud if nothing scored
+    if (!dart.scored || dart.scored === 0) { synthThud(); return; }
+  }
+
+  // Play horn based on ring
+  if (ring === 'triple') { synthTriple(); return; }
+  if (ring === 'double') { synthDouble(); return; }
+  synthSingle();
 }
 function showLimboLifeLost(data) {
   const { player_name, player_id, lives_remaining, starting_lives, eliminated, game_over } = data;
@@ -1979,7 +2232,10 @@ function showLimboLifeLost(data) {
     setTimeout(() => el.remove(), 400);
   }, 3500);
 
-  try { playRandomAudio(_loserAudioFiles); } catch(e) {}
+  // Only play audio on elimination — not every life lost
+  if (eliminated) {
+    try { playRandomAudio(_loserAudioFiles); } catch(e) {}
+  }
 }
 
 function showSlNotification(line1, line2, color) {
@@ -2470,6 +2726,27 @@ const X01_SVGS = {
 };
 
 let _x01AchievementTimer = null;
+// Kick Down flash — briefly shows KICK DOWN over the TV
+let _kickDownTimer = null;
+function showKickDownFlash(playerName) {
+  const existing = document.getElementById('kickDownFlash');
+  if (existing) existing.remove();
+  if (_kickDownTimer) clearTimeout(_kickDownTimer);
+  const el = document.createElement('div');
+  el.id = 'kickDownFlash';
+  el.style.cssText = 'position:absolute;inset:0;z-index:95;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;opacity:0;transition:opacity 0.2s';
+  el.innerHTML = `
+    <div style="font-family:var(--font-display);font-size:80px;font-weight:900;color:#e63946;letter-spacing:6px;text-shadow:0 0 40px #e6394688;text-transform:uppercase;line-height:1">💥 KICK DOWN!</div>
+    <div style="font-family:var(--font-display);font-size:48px;color:#fff;letter-spacing:4px;text-transform:uppercase;opacity:0.85">${playerName} → 0</div>`;
+  const frame = document.getElementById('tvGame') || document.body;
+  frame.appendChild(el);
+  requestAnimationFrame(() => { requestAnimationFrame(() => { el.style.opacity = '1'; }); });
+  _kickDownTimer = setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 300);
+  }, 2200);
+}
+
 function showX01Achievement(achievementKey) {
   const data = X01_ACHIEVEMENTS[achievementKey];
   const svg  = X01_SVGS[achievementKey] || '';
@@ -2779,6 +3056,8 @@ function renderLimboTV(ds, gameState) {
   const currentBar = ds.current_bar ?? 60;
   const turnStartBar = ds.turn_start_bar ?? currentBar;
   const startingBar = ds.starting_bar ?? 60;
+  // Use cached display bar (frozen at turn start) so number doesn't change mid-turn
+  const displayBar = _limboBarDisplay ?? currentBar;
   const turnTotals = ds.turn_totals || {};
   const currentPid = gameState.current_player_id;
   const darts      = gameState.darts_this_turn || [];
@@ -2930,7 +3209,7 @@ function renderLimboTV(ds, gameState) {
         <!-- BAR number — lower and bigger -->
         <div style="position:absolute;top:4%;left:0;right:0;text-align:center;z-index:10;pointer-events:none">
           <div style="font-family:var(--font-mono);font-size:35px;letter-spacing:4px;color:var(--muted)">BAR</div>
-          <div style="font-family:var(--font-display);font-size:300px;font-weight:900;color:var(--primary);letter-spacing:4px;line-height:0.95;text-shadow:0 0 60px rgba(0,180,160,0.4)">${currentBar}</div>
+          <div style="font-family:var(--font-display);font-size:300px;font-weight:900;color:var(--primary);letter-spacing:4px;line-height:0.95;text-shadow:0 0 60px rgba(0,180,160,0.4)">${displayBar}</div>
         </div>
 
         <!-- Raccoon image — fills center, anchored to bottom -->
@@ -3586,8 +3865,6 @@ function slHandleDartEvent(newState, onDone) {
   const landSq  = ev.slide_from || ev.to;
   const finalSq = ev.to;
 
-  console.log('[SL] dart event:', JSON.stringify(ev));
-  console.log('[SL] fromSq:', fromSq, 'landSq:', landSq, 'finalSq:', finalSq, 'slide_type:', ev.slide_type);  // miss — animate nothing, just re-render
 
   // Snapshot state NOW before any turn_changed event can mutate it
   const frozenState = JSON.parse(JSON.stringify(newState));
@@ -3671,7 +3948,6 @@ function slHandleDartEvent(newState, onDone) {
     }
     const now = performance.now();
     if (lastTime === undefined || now - lastTime >= HOP_MS) {
-      console.log('[SL] hop to sq', steps[idx]);
       _slAnimPositions[pid] = steps[idx];
       redrawBoard();
       requestAnimationFrame(() => hopNext(idx + 1, now));
@@ -3807,7 +4083,7 @@ function renderCricketTV(ds) {
       label: t.name || `Team ${i+1}`,
       marks: t.marks,
       score: t.score,
-      color: teamColors[i % teamColors.length],
+      color: t.color || teamColors[i % teamColors.length],
     }));
   } else {
     entities = state.players.map((p, i) => ({
@@ -3815,7 +4091,7 @@ function renderCricketTV(ds) {
       label: p.name,
       marks: marks[p.id] || {},
       score: state.player_scores[p.id] || 0,
-      color: teamColors[i % teamColors.length],
+      color: playerColorOf(p.id),
     }));
   }
 
@@ -3916,7 +4192,7 @@ function renderX01TeamsTV(ds) {
   grid.style.display = '';
   grid.style.gridTemplateColumns = `repeat(${ds.teams.length}, 1fr)`;
   grid.innerHTML = ds.teams.map((t, i) => {
-    const color = teamColors[i % teamColors.length];
+    const color = t.color || teamColors[i % teamColors.length];
     const isActive = t.player_ids.includes(state.current_player_id);
     const members = state.players.filter(p => t.player_ids.includes(p.id));
     const score = t.score;
@@ -3997,7 +4273,7 @@ function renderCompanion() { return; // TV only
       compTable.innerHTML = ds2.teams.map((t, i) => {
         const isActive = t.team_id === currentTeam?.team_id;
         const members = state.players.filter(p => t.player_ids.includes(p.id));
-        const color = teamColors[i % teamColors.length];
+        const color = t.color || teamColors[i % teamColors.length];
         return `<tr><td colspan="2" style="padding:6px 12px 2px;font-family:var(--font-mono);font-size:10px;letter-spacing:2px;color:${color};text-transform:uppercase;border:${isActive?`1px solid ${color}`:'none'};border-radius:4px">${t.name || `Team ${i+1}`} — ${t.score}</td></tr>` +
           members.map(p => `<tr class="${p.id===state.current_player_id?'active-row':''}"><td style="padding-left:20px">${p.name}</td><td></td></tr>`).join('');
       }).join('');
@@ -4317,6 +4593,7 @@ async function undoDart() {
   const result = await api('POST', '/game/undo');
   if (result && !result.detail) {
     if (result && result.current_player_id && dartHits[result.current_player_id]) dartHits[result.current_player_id].pop();
+    if (feedItems.length) feedItems.shift();
     state = result;
     renderAll();
   }
@@ -4880,6 +5157,59 @@ async function loadHistory() {
 }
 
 // ── DART FEED ─────────────────────────────────────────────────────────────────
+// ── PLAYER STATS ──────────────────────────────────────────────────────────────
+const _CRICKET_NUMS = new Set([15,16,17,18,19,20,25]);
+const _CRICKET_RING_MARKS = {single:1,outer_single:1,inner_single:1,double:2,triple:3,bull:1,bullseye:2};
+
+function calcGameStat(pid) {
+  if (!state) return null;
+  const mode = state.mode;
+  if (mode !== 'x01' && mode !== 'cricket' && mode !== 'kick_down') return null;
+
+  const history = (state.turn_history || []).filter(t => t.player_id === pid);
+
+  // Include the current in-progress turn so stats update live
+  const currentDarts = (state.darts_this_turn || []).filter(d => d.player_id === pid);
+  const allTurns = currentDarts.length
+    ? [...history, { player_id: pid, darts: currentDarts }]
+    : history;
+
+  // Always return a stat object for supported modes (0.00 before any darts)
+  if (mode === 'x01' || mode === 'kick_down') {
+    if (!allTurns.length) return { label: 'PPR', game: '0.00' };
+    const total = allTurns.reduce((sum, t) => {
+      const bust = t.darts.some(d => d.bust);
+      return sum + (bust ? 0 : t.darts.reduce((s, d) => s + (d.scored || 0), 0));
+    }, 0);
+    return { label: 'PPR', game: (total / allTurns.length).toFixed(2) };
+  }
+
+  if (mode === 'cricket') {
+    if (!allTurns.length) return { label: 'MPR', game: '0.00' };
+    const total = allTurns.reduce((sum, t) =>
+      sum + t.darts.reduce((s, d) => {
+        const num = (d.ring === 'bull' || d.ring === 'bullseye') ? 25 : d.segment;
+        return _CRICKET_NUMS.has(num) ? s + (_CRICKET_RING_MARKS[d.ring] || 0) : s;
+      }, 0)
+    , 0);
+    return { label: 'MPR', game: (total / allTurns.length).toFixed(2) };
+  }
+
+  return null;
+}
+
+function getStatHtml(pid, color) {
+  const s = calcGameStat(pid);
+  if (!s) return '';
+  const at = _allTimeStats[pid];
+  const atVal = s.label === 'PPR' ? at?.ppr_alltime : at?.mpr_alltime;
+  const atDisplay = atVal != null ? atVal : '0.00';
+  const atHtml = `<span style="opacity:0.5;margin-left:10px;font-size:12px;letter-spacing:1px">ALL TIME ${atDisplay}</span>`;
+  return `<div style="font-family:var(--font-mono);font-size:13px;letter-spacing:2px;color:${color};opacity:0.85;margin-top:4px;white-space:nowrap">
+    ${s.label} <span style="font-size:18px;font-weight:700;opacity:1">${s.game}</span>${atHtml}
+  </div>`;
+}
+
 // ── TURN PANEL ────────────────────────────────────────────────────────────────
 function renderTurnPanel() {
   const panel = document.getElementById('tvTurnPanel');
@@ -4908,7 +5238,7 @@ function renderTurnPanel() {
       if (winnerName && teams && teams.length) {
         const teamColors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
         const idx = teams.findIndex(t => t.name === winnerName || t.player_ids?.includes(wid));
-        if (idx >= 0) winnerColor = teamColors[idx % teamColors.length];
+        if (idx >= 0) winnerColor = teams[idx].color || teamColors[idx % teamColors.length];
       }
       panel.innerHTML = winnerName ? `
         <div class="turn-now" style="border-color:#f5a623;border-width:2px;background:rgba(26,18,0,0.95);box-shadow:0 0 40px rgba(245,166,35,0.6),0 0 80px rgba(245,166,35,0.25),inset 0 0 30px rgba(245,166,35,0.08);text-align:center">
@@ -5001,6 +5331,7 @@ function renderTurnPanel() {
     <div class="turn-now" style="border-color:${color};background:${colorGlow}">
       <div class="turn-now-name" style="color:${color}">${cur.name}</div>
       <div class="turn-now-darts">${slots}</div>
+      ${getStatHtml(cur.id, color)}
     </div>
     ${uniqueNext.length ? `
       <div class="turn-next">
@@ -5087,11 +5418,21 @@ function showX01WinnerCard(winnerId, winnerName) {
   if (existing) existing.remove();
 
   const wp = state && state.players && state.players.find(p => p.id === winnerId);
-  const color = wp ? playerColorOf(winnerId) : 'var(--primary)';
+  const ds = (state && state.mode_display) || {};
+  const teams = ds.teams;
+  const winningTeam = teams && (teams.find(t => t.team_id === winnerId) || teams.find(t => t.player_ids && t.player_ids.includes(winnerId)));
+  const isTeamWin = !!winningTeam && !wp;
+  const color = wp ? playerColorOf(winnerId) : (winningTeam ? turnColorOf(winningTeam.player_ids[0]) : 'var(--primary)');
   const name = winnerName || (wp && wp.name) || 'WINNER';
-  const avatarEl = wp && wp.avatar_url
-    ? `<img src="${wp.avatar_url}" style="width:220px;height:220px;border-radius:50%;border:6px solid ${color};object-fit:cover;box-shadow:0 0 60px ${color}88">`
-    : `<div style="width:220px;height:220px;border-radius:50%;border:6px solid ${color};background:${color}22;display:flex;align-items:center;justify-content:center;font-size:88px;font-weight:900;color:${color}">${(name[0]||'?').toUpperCase()}</div>`;
+
+  let avatarEl;
+  if (wp && wp.avatar_url) {
+    avatarEl = `<img src="${wp.avatar_url}" style="width:220px;height:220px;border-radius:50%;border:6px solid ${color};object-fit:cover;box-shadow:0 0 60px ${color}88">`;
+  } else if (isTeamWin) {
+    avatarEl = `<div style="font-family:var(--font-display);font-size:72px;font-weight:900;letter-spacing:6px;color:${color};text-transform:uppercase;text-shadow:0 0 40px ${color}88;padding:0 16px">${name}</div>`;
+  } else {
+    avatarEl = `<div style="width:220px;height:220px;border-radius:50%;border:6px solid ${color};background:${color}22;display:flex;align-items:center;justify-content:center;font-size:88px;font-weight:900;color:${color}">${(name[0]||'?').toUpperCase()}</div>`;
+  }
 
   const el = document.createElement('div');
   el.id = 'x01WinnerCard';
@@ -5099,7 +5440,7 @@ function showX01WinnerCard(winnerId, winnerName) {
   el.innerHTML = `<div style="background:rgba(10,14,26,0.95);border:4px solid #f5c518;border-radius:24px;padding:52px 80px;text-align:center;backdrop-filter:blur(8px);display:flex;flex-direction:column;align-items:center;gap:24px;animation:limboWinnerPulse 1.5s ease-in-out infinite">
     <div style="font-family:var(--font-mono);font-size:36px;letter-spacing:6px;color:#f5c518;opacity:0.9">🏆 WINNER 🏆</div>
     ${avatarEl}
-    <div style="font-family:var(--font-display);font-size:160px;font-weight:900;letter-spacing:4px;color:${color};text-shadow:0 0 40px ${color}88;text-transform:uppercase;line-height:1">${name}</div>
+    ${isTeamWin ? '' : `<div style="font-family:var(--font-display);font-size:160px;font-weight:900;letter-spacing:4px;color:${color};text-shadow:0 0 40px ${color}88;text-transform:uppercase;line-height:1">${name}</div>`}
   </div>`;
 
   const frame = document.getElementById('tvGame') || document.body;
@@ -5149,6 +5490,7 @@ function buildRankings() {
     if (a.id === state.winner_id) return -1;
     if (b.id === state.winner_id) return 1;
     if (mode === 'x01') return (scores[a.id] || 0) - (scores[b.id] || 0);
+    if (mode === 'kick_down') return (scores[b.id] || 0) - (scores[a.id] || 0); // higher = better
     if (mode === 'beyond_top') {
       const ap = (ds.points && ds.points[a.id]) || 0;
       const bp = (ds.points && ds.points[b.id]) || 0;
@@ -5292,7 +5634,8 @@ function getMedalClass(id, type) {
 }
 
 function showGameOver(payload) {
-  console.log('[TV] showGameOver mode:', state && state.mode, 'winner_id:', payload.winner_id || (state && state.winner_id));
+  if (showGameOver._fired) return; // already handled this game's over
+  showGameOver._fired = true;
   const ds = state && state.mode_display || {};
   const teams = ds.teams;
   const wid = payload.winner_id || (state && state.winner_id);
@@ -5314,7 +5657,7 @@ function showGameOver(payload) {
   }
   // Don't show banner for limbo — winner card handles it
   if (state && state.mode !== 'limbo') {
-    if (state && state.mode === 'x01') {
+    if (state && (state.mode === 'x01' || state.mode === 'cricket' || state.mode === 'kick_down')) {
       showX01WinnerCard(wid, winnerName);
     } else {
       showAnnouncement(winnerName ? winnerName + ' wins!' : 'Game over!', 99999);

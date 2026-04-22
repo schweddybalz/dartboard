@@ -18,6 +18,8 @@ class CricketMode(BaseMode):
                   "description": "Optional team groupings e.g. '1,2|3,4' for 2v2 (use player position numbers)"},
         "team_names": {"type": "string", "default": "",
                        "description": "Optional team names e.g. 'Reds|Blues'"},
+        "team_colors": {"type": "string", "default": "",
+                        "description": "Optional team colors e.g. '#e63946|#2862A5'"},
     }
 
     def __init__(self, players, options):
@@ -33,6 +35,15 @@ class CricketMode(BaseMode):
                                 for i in range(len(self._teams))]
         else:
             self._team_names = [f"Team {i+1}" for i in range(len(self._teams or []))]
+
+        palette = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c']
+        colors_str = options.get("team_colors", "").strip()
+        if colors_str and self._teams:
+            raw_colors = [c.strip() for c in colors_str.split("|")]
+            self._team_colors = [raw_colors[i] if i < len(raw_colors) and raw_colors[i] else palette[i % len(palette)]
+                                 for i in range(len(self._teams))]
+        else:
+            self._team_colors = [palette[i % len(palette)] for i in range(len(self._teams or []))]
         # marks[entity_id][number] = 0..3  (entity = player or team)
         self._marks = self._fresh_marks()
         self._points = {e: 0 for e in self._entity_ids()}
@@ -231,6 +242,7 @@ class CricketMode(BaseMode):
                 {
                     "team_id": f"team_{i}",
                     "name": self._team_names[i] if i < len(self._team_names) else f"Team {i+1}",
+                    "color": self._team_colors[i] if i < len(self._team_colors) else None,
                     "player_ids": team,
                     "marks": {str(n): self._marks[f"team_{i}"][n] for n in CRICKET_NUMBERS},
                     "score": sum(state["player_scores"].get(p, 0) for p in team),
@@ -254,8 +266,17 @@ class CricketMode(BaseMode):
             num = 25 if ring in ("bull", "bullseye") else seg
             if num not in CRICKET_NUMBERS:
                 continue
-            # Skip globally closed numbers
-            if all(self._marks[e][num] >= 3 for e in self._entity_ids()):
+            # Only skip numbers that were already globally closed BEFORE this turn
+            # (i.e. skip if all entities had >= 3 marks at the start of the turn)
+            # We approximate this by checking if current entity also has 3 — if they
+            # just closed it this turn they earned marks; only skip if they had 3 already
+            # at the start (which we can't know perfectly, so skip only if entity was
+            # already at 3 before the dart that closed it — use dart order to estimate)
+            # Simpler correct fix: count marks regardless of globally_closed.
+            # Points only score if opponent hasn't closed, but marks always count up to 3.
+            current_entity_marks = self._marks[eid_current][num]
+            if current_entity_marks == 0 and all(self._marks[e][num] >= 3 for e in self._entity_ids() if e != eid_current):
+                # Number globally closed before this entity even opened it — truly skip
                 continue
             m = ring_marks.get(ring, 0)
             turn_marks += min(m, 3)  # count marks as thrown, cap at 3 per dart

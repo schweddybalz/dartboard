@@ -166,6 +166,52 @@ class Database:
             "highest_turn": highest_turn,
         }
 
+    def get_ppr_alltime(self, player_id: str) -> Optional[float]:
+        """All-time PPR across completed X01 games (3-dart turns only)."""
+        with self._conn() as conn:
+            rows = conn.execute("""
+                SELECT d.game_id, d.turn_number, SUM(d.score) as turn_score, COUNT(*) as dart_count
+                FROM darts d
+                JOIN games g ON g.id = d.game_id
+                WHERE d.player_id = ? AND g.mode = 'x01' AND g.ended_at IS NOT NULL
+                GROUP BY d.game_id, d.turn_number
+                HAVING dart_count = 3
+            """, (player_id,)).fetchall()
+            if not rows:
+                return None
+            total = sum(r["turn_score"] for r in rows)
+            return round(total / len(rows), 2)
+
+    def get_mpr_alltime(self, player_id: str) -> Optional[float]:
+        """All-time MPR across completed Cricket games."""
+        cricket_nums = {15, 16, 17, 18, 19, 20, 25}
+        ring_marks = {"single": 1, "outer_single": 1, "inner_single": 1,
+                      "double": 2, "triple": 3, "bull": 1, "bullseye": 2}
+        with self._conn() as conn:
+            rows = conn.execute("""
+                SELECT d.game_id, d.turn_number, d.segment, d.ring
+                FROM darts d
+                JOIN games g ON g.id = d.game_id
+                WHERE d.player_id = ? AND g.mode = 'cricket' AND g.ended_at IS NOT NULL
+            """, (player_id,)).fetchall()
+            if not rows:
+                return None
+            turns: dict = {}
+            for r in rows:
+                key = (r["game_id"], r["turn_number"])
+                if key not in turns:
+                    turns[key] = []
+                turns[key].append(r)
+            total_marks = 0
+            for darts in turns.values():
+                for d in darts:
+                    seg = d["segment"]
+                    ring = d["ring"] or ""
+                    num = 25 if ring in ("bull", "bullseye") else seg
+                    if num in cricket_nums:
+                        total_marks += ring_marks.get(ring, 0)
+            return round(total_marks / len(turns), 2) if turns else None
+
     # ── Games ────────────────────────────────────────────────────────────────
 
     def create_game(self, mode: str, options: dict, player_ids: list) -> str:

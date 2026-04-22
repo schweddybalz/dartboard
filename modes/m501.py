@@ -179,6 +179,14 @@ class X01Mode(BaseMode):
         else:
             self._team_names = [f"Team {i+1}" for i in range(len(self._teams or []))]
 
+        colors_str = options.get("team_colors", "").strip()
+        if colors_str and self._teams:
+            raw_colors = [c.strip() for c in colors_str.split("|")]
+            self._team_colors = [raw_colors[i] if i < len(raw_colors) and raw_colors[i] else None
+                                 for i in range(len(self._teams))]
+        else:
+            self._team_colors = [None] * len(self._teams or [])
+
         # Turn order for teams: cycle through teams evenly (T0,T1,T2,T3,T0,T1,T2,T3...)
         # Within each team, players rotate each time their team comes up.
         if self._teams:
@@ -289,7 +297,7 @@ class X01Mode(BaseMode):
                 "player_scores": scores,
                 "scored": 0,
                 "bust": True,
-                "advance_turn": False,
+                "advance_turn": True,
                 "message": f"Bust! Back to {turn_start}",
             }
 
@@ -300,7 +308,7 @@ class X01Mode(BaseMode):
                     "player_scores": scores,
                     "scored": 0,
                     "bust": True,
-                    "advance_turn": False,
+                    "advance_turn": True,
                     "message": "Need a double to finish! Bust.",
                     "announcement": f"{player['name']} needs a double to finish!",
                 }
@@ -309,9 +317,9 @@ class X01Mode(BaseMode):
                 "player_scores": scores,
                 "scored": raw_score,
                 "winner_id": pid,
-                "advance_turn": False,
+                "advance_turn": True,
                 "message": f"{player['name']} wins!",
-                "announcement": None,
+                "announcement": f"Game shot! {player['name']} wins!",
             }
 
         scores[rep] = new_score
@@ -336,6 +344,7 @@ class X01Mode(BaseMode):
                 {
                     "team_id": f"team_{i}",
                     "name": self._team_names[i] if i < len(self._team_names) else f"Team {i+1}",
+                    "color": self._team_colors[i] if i < len(self._team_colors) else None,
                     "player_ids": team,
                     "score": scores[team[0]],
                     "checkout": self._checkout_table().get(scores[team[0]], ""),
@@ -344,27 +353,22 @@ class X01Mode(BaseMode):
             ]
         else:
             team_info = None
-
-        # Detect turn achievements from darts_this_turn
-        darts = state.get("darts_this_turn", [])
+        # Achievement from current 3-dart turn
         achievement = None
-        if len(darts) >= 3:
-            pid_current = state["players"][state["current_player_idx"]]["id"]
-            turn_darts = [d for d in darts if d.get("player_id") == pid_current and not d.get("bust")]
-            turn_score = sum(d.get("scored", 0) for d in turn_darts)
-            rings = [d.get("ring", "") for d in turn_darts]
-            segs  = [d.get("segment", 0) for d in turn_darts]
-            bull_rings = {"bull", "bullseye"}
-            bull_count = sum(1 for r in rings if r in bull_rings)
+        darts = state.get("darts_this_turn", [])
+        if len(darts) == 3:
+            turn_score = sum(d.get("scored", 0) for d in darts)
+            rings = [d.get("ring", "") for d in darts]
+            segs  = [d.get("segment", 0) for d in darts]
             if turn_score == 180:
                 achievement = "maximum"
-            elif bull_count == 3:
+            elif all(r in ("bull", "bullseye") for r in rings):
                 achievement = "hat_trick"
-            elif len(set(segs)) == 1 and len(set(rings)) == 1 and rings[0] not in ("miss",):
+            elif len(set(segs)) == 1 and len(set(rings)) == 1 and rings[0] not in ('miss',):
                 achievement = "three_in_a_bed"
-            elif 140 <= turn_score <= 179:
+            elif turn_score >= 140:
                 achievement = "high_ton"
-            elif 100 <= turn_score <= 139:
+            elif turn_score >= 100:
                 achievement = "low_ton"
 
         return {

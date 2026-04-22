@@ -846,27 +846,31 @@
             <button class="btn btn-secondary btn-sm" onclick="nextTurn()">Skip Turn</button>
           </div>
         </div>
-        <div class="panel-body" id="compThrowBody">
-          <!-- Ring selector — swaps for S&L mode -->
-          <div class="form-row" id="ringPanel">
+        <div class="panel-body">
+          <!-- Ring selector -->
+          <div class="form-row">
             <div class="form-label">Ring</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap" id="ringButtons">
-              <!-- Populated by renderRingPanel() -->
+            <div style="display:flex;gap:8px">
+              <button class="throw-btn" id="ring-single" onclick="selectRing('single')" style="flex:1">Single</button>
+              <button class="throw-btn" id="ring-double" onclick="selectRing('double')" style="flex:1">Double</button>
+              <button class="throw-btn" id="ring-triple" onclick="selectRing('triple')" style="flex:1">Triple</button>
+              <button class="throw-btn special" id="ring-bull" onclick="throwDart(25,'bull')" style="flex:1">Bull<br><span style="font-size:10px">25</span></button>
+              <button class="throw-btn special" id="ring-bullseye" onclick="throwDart(25,'bullseye')" style="flex:1">Bull<br><span style="font-size:10px">50</span></button>
             </div>
           </div>
-          <!-- Number grid (hidden in S&L mode) -->
-          <div id="numberGridWrap">
-            <div class="form-label" style="margin-bottom:8px">Number</div>
-            <div class="quick-throw" id="numberGrid"></div>
-          </div>
+          <!-- Number grid -->
+          <div class="form-label" style="margin-bottom:8px">Number</div>
+          <div class="quick-throw" id="numberGrid"></div>
         </div>
-        <div id="compNextPlayerBtn" style="display:none;padding:12px">
-          <button onclick="nextTurn()" style="
-            width:100%;padding:20px;font-size:22px;font-weight:900;letter-spacing:2px;
-            background:var(--primary);color:var(--black);border:none;border-radius:12px;
-            cursor:pointer;text-transform:uppercase;">
-            NEXT PLAYER →
-          </button>
+      </div>
+    </div>
+
+    <!-- Next player prompt (shown after all darts thrown in modes that need it) -->
+    <div id="compNextPlayerPanel" style="display:none">
+      <div class="panel">
+        <div class="panel-body" style="display:flex;flex-direction:column;gap:12px">
+          <button class="btn btn-primary btn-full" style="padding:20px;font-size:18px;letter-spacing:1px" onclick="nextTurn()">NEXT PLAYER ›</button>
+          <button class="btn btn-secondary btn-sm" style="align-self:center" onclick="undoDart()">↩ Undo last dart</button>
         </div>
       </div>
     </div>
@@ -1019,7 +1023,7 @@ function handleEvent(event, payload) {
       // Keep teams on for rematch — assignments and toggle stay as-is
     } else {
       teamAssignments = [];
-      teamNames = [];
+      teamNames = []; teamColors = [];
       _toggleState['teams_enabled'] = false;
       document.querySelectorAll('[data-toggle="teams_enabled"]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.value === 'false');
@@ -1055,7 +1059,6 @@ function switchView(view) {
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
 function renderAll() {
-  renderRingPanel();
   renderCompanion();
 }
 
@@ -1513,17 +1516,24 @@ function renderX01TeamsTV(ds) {
 function renderCompanion() {
   const activeGame = document.getElementById('compActiveGame');
   const throwPanel = document.getElementById('compThrowPanel');
+  const nextPlayerPanel = document.getElementById('compNextPlayerPanel');
   const scoresPanel = document.getElementById('compScoresPanel');
   const setupPanel = document.getElementById('compSetupPanel');
 
   if (state && !state.game_over) {
     activeGame.style.display = 'block';
-    throwPanel.style.display = 'block';
     scoresPanel.style.display = 'block';
     setupPanel.style.display = 'none';
 
-    document.getElementById('compCurrentName').textContent = state.current_player_name;
+    // Show next-player prompt when turn is done — driven by pending_turn flag from engine
+    const dartsThrown = state.darts_this_turn.length;
     const ds = state.mode_display || {};
+    const limboTurnDone = state.mode === 'limbo' && ds.turn_done;
+    const needsNextPlayer = state.pending_turn || limboTurnDone;
+    throwPanel.style.display = needsNextPlayer ? 'none' : 'block';
+    nextPlayerPanel.style.display = needsNextPlayer ? 'block' : 'none';
+
+    document.getElementById('compCurrentName').textContent = state.current_player_name;
     let score = state.player_scores[state.current_player_id];
     // In x01 teams, show team score not individual
     if (state.mode === 'x01' && ds.teams && ds.teams.length) {
@@ -1538,33 +1548,8 @@ function renderCompanion() {
     coEl.innerHTML = co ? checkoutBoxesHtml(co) : '';
 
     // Dart slots
-    const dartsThrown = state.darts_this_turn.length;
-    // During killer assignment, hide dart slot indicators (1 dart auto-advances)
-    const dartSlotsEl = document.getElementById('compDartSlots');
-    if (isKillerAssignment()) {
-      if (dartSlotsEl) dartSlotsEl.innerHTML = '';
-    } else {
-      if (dartSlotsEl) dartSlotsEl.innerHTML =
-        [0,1,2].map(i => `<div class="dart-slot" style="display:inline-block;width:24px;height:4px;border-radius:2px;margin-right:4px;background:${i<dartsThrown?'var(--primary)':'var(--border)'}"></div>`).join('');
-    }
-
-    // Show Next Player button when: 3 darts thrown, OR current player already finished (S&L)
-    // Never show during killer assignment (auto-advances on valid throw)
-    const throwBody = document.getElementById('compThrowBody');
-    const nextBtn = document.getElementById('compNextPlayerBtn');
-    const ds3 = state.mode_display || {};
-    const slFinished = ds3.finished || {};
-    const currentPlayerFinished = isSnakesLadders() && slFinished[state.current_player_id] !== undefined;
-    const hasBust = state && (state.darts_this_turn || []).some(d => d.bust);
-    const limboTurnDone = state.mode === 'limbo' && ds3.turn_done;
-    const showNextPlayer = !isKillerAssignment() && !isSnakesLadders() && (dartsThrown >= 3 || currentPlayerFinished || limboTurnDone || hasBust);
-    if (showNextPlayer) {
-      if (throwBody) throwBody.style.display = 'none';
-      if (nextBtn) nextBtn.style.display = 'block';
-    } else {
-      if (throwBody) throwBody.style.display = '';
-      if (nextBtn) nextBtn.style.display = 'none';
-    }
+    document.getElementById('compDartSlots').innerHTML =
+      [0,1,2].map(i => `<div class="dart-slot" style="display:inline-block;width:24px;height:4px;border-radius:2px;margin-right:4px;background:${i<dartsThrown?'var(--primary)':'var(--border)'}"></div>`).join('');
 
     // Scores table
     const compTable = document.getElementById('compScoresTable');
@@ -1580,21 +1565,33 @@ function renderCompanion() {
           members.map(p => `<tr class="${p.id===state.current_player_id?'active-row':''}"><td style="padding-left:20px">${p.name}</td><td></td></tr>`).join('');
       }).join('');
     } else {
-      compTable.innerHTML = state.players.map(p => `
-        <tr class="${p.id === state.current_player_id ? 'active-row' : ''} ${state.game_over ? getMedalClass(p.id,'player') : ''}">
-          <td>${p.name}</td>
+      compTable.innerHTML = state.players.map(p => {
+        const pc = p.color || 'var(--muted)';
+        const dot = `<span onclick="event.stopPropagation();closeTeamColorPicker();openColorPicker('${p.id}',this)"
+          style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${pc};cursor:pointer;margin-right:6px;flex-shrink:0;border:1.5px solid rgba(255,255,255,0.25);vertical-align:middle"></span>`;
+        return `<tr class="${p.id === state.current_player_id ? 'active-row' : ''} ${state.game_over ? getMedalClass(p.id,'player') : ''}">
+          <td>${dot}${p.name}</td>
           <td>${formatScore(state.player_scores[p.id], state.mode)}</td>
-        </tr>`).join('');
+        </tr>`;
+      }).join('');
     }
 
-    // Override select
+    // Override select — show teams if team game, otherwise players
     const ovSelect = document.getElementById('overridePlayer');
-    ovSelect.innerHTML = state.players.map(p =>
-      `<option value="${p.id}">${p.name}</option>`).join('');
+    const ds3 = state.mode_display || {};
+    if (['cricket','x01'].includes(state.mode) && ds3.teams && ds3.teams.length) {
+      ovSelect.innerHTML = ds3.teams.map(t =>
+        `<option value="${t.player_ids[0]}">${t.name || t.team_id}</option>`
+      ).join('');
+    } else {
+      ovSelect.innerHTML = state.players.map(p =>
+        `<option value="${p.id}">${p.name}</option>`).join('');
+    }
 
   } else {
     activeGame.style.display = 'none';
     throwPanel.style.display = 'none';
+    nextPlayerPanel.style.display = 'none';
     scoresPanel.style.display = 'none';
     setupPanel.style.display = 'block';
     renderPlayerPool();
@@ -1823,96 +1820,6 @@ function checkoutBoxesHtml(hint) {
 
 let selectedRingBtns = {};
 
-function isSnakesLadders() {
-  return state && state.mode === 'snakes_ladders';
-}
-
-function isKillerAssignment() {
-  if (!state || state.mode !== 'killer') return false;
-  const ds = state.mode_display || {};
-  return ds.phase === 'assignment';
-}
-
-function renderRingPanel() {
-  const wrap = document.getElementById('ringButtons');
-  const numWrap = document.getElementById('numberGridWrap');
-  if (!wrap) return;
-
-  if (isKillerAssignment()) {
-    // Show prompt above ring buttons area, then show number grid for input
-    wrap.style.flexWrap = 'wrap';
-    wrap.innerHTML = `<div style="width:100%;text-align:center;padding:8px 8px 4px">
-      <div style="font-size:15px;font-weight:900;letter-spacing:2px;text-transform:uppercase;color:var(--primary)">🎯 THROW WITH YOUR OFF HAND</div>
-      <div style="font-size:12px;color:var(--muted);letter-spacing:1px;margin-top:2px">Tap the number you hit to claim it</div>
-    </div>`;
-    // Show number grid
-    if (numWrap) {
-      numWrap.style.display = '';
-      const grid = document.getElementById('numberGrid');
-      if (grid) {
-        const ds = state.mode_display || {};
-        const taken = new Set(Object.values(ds.assigned_numbers || {}));
-        const nums = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20];
-        grid.innerHTML = nums.map(n =>
-          `<button class="throw-btn" onclick="throwDart(${n},'single')">${n}</button>`
-        ).join('');
-      }
-    }
-    return;
-  }
-
-  if (isSnakesLadders()) {
-    numWrap && (numWrap.style.display = 'none');
-    wrap.style.flexWrap = 'wrap';
-
-    const dartsThrown = state ? (state.darts_this_turn || []).length : 0;
-    const currentPid = state && state.current_player_id;
-    const ds = state && state.mode_display || {};
-    const finished = ds.finished || {};
-    const playerDone = currentPid && finished[currentPid] !== undefined;
-
-    const slRings = [
-      { ring: 'double',       label: 'Double',   sub: '🎲 1' },
-      { ring: 'outer_single', label: 'Outer',    sub: '🎲 2' },
-      { ring: 'triple',       label: 'Triple',   sub: '🎲 3' },
-      { ring: 'inner_single', label: 'Inner',    sub: '🎲 4' },
-      { ring: 'bull',         label: 'Bull',     sub: '🎲 5' },
-      { ring: 'bullseye',     label: 'D.Bull',   sub: '🎲 6' },
-    ];
-
-    const dartDots = [0,1,2].map(i =>
-      `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;
-        background:${i < dartsThrown ? 'var(--primary)' : 'var(--border)'};
-        margin:0 3px"></span>`
-    ).join('');
-
-    wrap.innerHTML = `
-      <div style="width:100%;text-align:center;margin-bottom:8px;font-size:12px;color:var(--muted);letter-spacing:1px">
-        DART ${Math.min(dartsThrown + 1, 3)} OF 3 &nbsp; ${dartDots}
-      </div>
-      ${slRings.map(r =>
-        `<button class="throw-btn special" ${playerDone ? 'disabled style="opacity:0.3"' : ''}
-          style="flex:1;min-width:70px;display:flex;flex-direction:column;align-items:center;gap:2px"
-          onclick="throwDart(1,'${r.ring}')">
-          <span style="font-size:13px;font-weight:700">${r.label}</span>
-          <span style="font-size:11px;opacity:0.7">${r.sub}</span>
-        </button>`
-      ).join('')}`;
-  } else {
-    // Standard mode — rebuild number grid to use selectedRing (not hardcoded 'single' from assignment)
-    numWrap && (numWrap.style.display = '');
-    buildNumberGrid();
-    wrap.style.flexWrap = '';
-    wrap.innerHTML = `
-      <button class="throw-btn" id="ring-single" onclick="selectRing('single')" style="flex:1">Single</button>
-      <button class="throw-btn" id="ring-double" onclick="selectRing('double')" style="flex:1">Double</button>
-      <button class="throw-btn" id="ring-triple" onclick="selectRing('triple')" style="flex:1">Triple</button>
-      <button class="throw-btn special" id="ring-bull" onclick="throwDart(25,'bull')" style="flex:1">Bull<br><span style="font-size:10px">25</span></button>
-      <button class="throw-btn special" id="ring-bullseye" onclick="throwDart(25,'bullseye')" style="flex:1">Bull<br><span style="font-size:10px">50</span></button>`;
-    selectRing(selectedRing);
-  }
-}
-
 function selectRing(ring) {
   selectedRing = ring;
   ['single','double','triple'].forEach(r => {
@@ -1968,7 +1875,7 @@ async function endGame() {
   dartHits = {};
   if (!wasTeamGame) {
     teamAssignments = [];
-    teamNames = [];
+    teamNames = []; teamColors = [];
     _toggleState['teams_enabled'] = false;
     document.querySelectorAll('[data-toggle="teams_enabled"]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.value === 'false');
@@ -2036,11 +1943,13 @@ async function setPlayerColor(playerId, color) {
   closeColorPicker();
   await loadPlayers();
   renderPlayerPool();
+  renderAll();
 }
 
 function openColorPicker(playerId, chipEl) {
   closeColorPicker();
-  const palette = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
+  closeTeamColorPicker();
+  const palette = TEAM_COLOR_OPTIONS.map(o => o.hex);
   const usedColors = new Set(
     players
       .filter(p => p.id !== playerId && selectedGamePlayers.includes(p.id) && p.color)
@@ -2076,6 +1985,9 @@ function closeColorPicker() {
   if (pop) pop.remove();
   document.removeEventListener('click', closeColorPicker);
 }
+
+// Close any open color picker on scroll
+window.addEventListener('scroll', () => { closeColorPicker(); closeTeamColorPicker(); }, true);
 
 async function deletePlayer(playerId, playerName) {
   if (!confirm(`Delete ${playerName}? This cannot be undone.`)) return;
@@ -2268,7 +2180,7 @@ function renderModeOptions() {
 
   const schemaEntries = Object.entries(mode.options_schema)
     .filter(([key]) => {
-      if (hasTeams && (key === 'teams' || key === 'team_names')) return false;
+      if (hasTeams && (key === 'teams' || key === 'team_names' || key === 'team_colors')) return false;
       if (hasEasyMode && (key === 'easy_players')) return false;
       if (key === 'double_out') return false; // rendered inline with double_in
       return true;
@@ -2379,6 +2291,22 @@ function renderSelectedPlayers() { renderPlayerPool(); }
 // teamAssignments[teamIndex] = [pid, pid, ...]
 let teamAssignments = [];
 let teamNames = [];
+let teamColors = [];
+
+const TEAM_COLOR_OPTIONS = [
+  { hex: '#e63946', name: 'Red'    },
+  { hex: '#f5a623', name: 'Orange' },
+  { hex: '#f5c518', name: 'Gold'   },
+  { hex: '#2dc653', name: 'Green'  },
+  { hex: '#00b4a0', name: 'Teal'   },
+  { hex: '#2862A5', name: 'Blue'   },
+  { hex: '#00b8d9', name: 'Cyan'   },
+  { hex: '#5C2D91', name: 'Purple' },
+  { hex: '#c975d4', name: 'Pink'   },
+  { hex: '#ff6b9d', name: 'Rose'   },
+  { hex: '#e87b1e', name: 'Amber'  },
+  { hex: '#7cb518', name: 'Lime'   },
+];
 
 function renderTeamsSection() {
   const modeId = document.getElementById('setupMode')?.value;
@@ -2420,17 +2348,19 @@ function renderTeams() {
   if (teamAssignments.length !== n) {
     teamAssignments = Array.from({length: n}, () => []);
     teamNames = Array.from({length: n}, (_, i) => `Team ${i+1}`);
+    teamColors = Array.from({length: n}, (_, i) => TEAM_COLOR_OPTIONS[i % TEAM_COLOR_OPTIONS.length].hex);
     selectedGamePlayers.forEach((pid, i) => teamAssignments[i % n].push(pid));
   }
   while (teamNames.length < n) teamNames.push(`Team ${teamNames.length+1}`);
+  while (teamColors.length < n) teamColors.push(TEAM_COLOR_OPTIONS[teamColors.length % TEAM_COLOR_OPTIONS.length].hex);
 
-  const colors = ['#2862A5','#5C2D91','#00b4a0','#e63946','#f5a623','#2dc653','#e87b1e','#c975d4','#00b8d9','#ff6b9d','#7cb518','#ff9a3c'];
   grid.innerHTML = `<div class="teams-grid" style="grid-template-columns: repeat(${Math.min(n,2)}, 1fr)">` +
     teamAssignments.map((team, i) => {
+      const color = teamColors[i];
       const chips = team.map(pid => {
         const p = players.find(pl => pl.id === pid);
         if (!p) return '';
-        return `<div class="pool-chip" draggable="true" style="border-color:${colors[i]};color:${colors[i]};background:${colors[i]}22"
+        return `<div class="pool-chip" draggable="true" style="border-color:${color};color:${color};background:${color}22"
           ondragstart="onDragStart(event,'${pid}')" id="chip-team-${pid}">
           ${chipAvatarHtml(p)} ${p.name}
         </div>`;
@@ -2439,14 +2369,54 @@ function renderTeams() {
         ondragover="event.preventDefault();this.classList.add('drag-over')"
         ondragleave="this.classList.remove('drag-over')"
         ondrop="onDropTeam(event,${i})">
-        <input type="text" value="${teamNames[i]}"
-          style="font-family:var(--font-mono);font-size:11px;letter-spacing:1px;color:${colors[i]};background:transparent;border:none;outline:none;width:100%;text-transform:uppercase;margin-bottom:8px;padding:2px 4px;border-radius:3px;cursor:text"
-          placeholder="Team ${i+1}" oninput="teamNames[${i}]=this.value"
-          onfocus="this.style.background='rgba(255,255,255,0.06)'"
-          onblur="this.style.background='transparent'">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <div onclick="openTeamColorPicker(${i}, this)" title="Pick color"
+            style="width:14px;height:14px;border-radius:50%;background:${color};cursor:pointer;flex-shrink:0;border:2px solid rgba(255,255,255,0.3)"></div>
+          <input type="text" value="${teamNames[i]}"
+            style="font-family:var(--font-mono);font-size:11px;letter-spacing:1px;color:${color};background:transparent;border:none;outline:none;width:100%;text-transform:uppercase;padding:2px 4px;border-radius:3px;cursor:text"
+            placeholder="Team ${i+1}" oninput="teamNames[${i}]=this.value"
+            onfocus="this.style.background='rgba(255,255,255,0.06)'"
+            onblur="this.style.background='transparent'">
+        </div>
         <div class="team-zone-players">${chips || '<span style="color:var(--muted);font-size:12px">Drop players here</span>'}</div>
       </div>`;
     }).join('') + `</div>`;
+}
+
+function closeTeamColorPicker() {
+  const pop = document.getElementById('teamColorPickerPopover');
+  if (pop) pop.remove();
+  document.removeEventListener('click', closeTeamColorPicker);
+}
+
+function openTeamColorPicker(teamIdx, dotEl) {
+  closeTeamColorPicker();
+  closeColorPicker();
+
+  const pop = document.createElement('div');
+  pop.id = 'teamColorPickerPopover';
+  pop.className = 'color-picker-popover';
+
+  TEAM_COLOR_OPTIONS.forEach(opt => {
+    const isMine = teamColors[teamIdx] === opt.hex;
+    const swatch = document.createElement('div');
+    swatch.title = opt.name;
+    swatch.style.cssText = `width:26px;height:26px;border-radius:50%;background:${opt.hex};cursor:pointer;flex-shrink:0;border:2px solid ${isMine?'#fff':'transparent'}`;
+    swatch.onclick = (e) => {
+      e.stopPropagation();
+      teamColors[teamIdx] = opt.hex;
+      closeTeamColorPicker();
+      renderTeams();
+    };
+    pop.appendChild(swatch);
+  });
+
+  document.body.appendChild(pop);
+  const rect = dotEl.getBoundingClientRect();
+  pop.style.top = (rect.bottom + 6) + 'px';
+  pop.style.left = Math.min(rect.left, window.innerWidth - 260) + 'px';
+
+  setTimeout(() => document.addEventListener('click', closeTeamColorPicker, { once: true }), 0);
 }
 
 function randomizeTeams() {
@@ -2536,6 +2506,7 @@ async function _startGame() {
         team.map(pid => selectedGamePlayers.indexOf(pid) + 1).filter(i => i > 0).join(',')
       ).join('|');
       options.team_names = nonEmpty.map(({idx}) => teamNames[idx] || `Team ${idx+1}`).join('|');
+      options.team_colors = nonEmpty.map(({idx}) => teamColors[idx] || TEAM_COLOR_OPTIONS[idx % TEAM_COLOR_OPTIONS.length].hex).join('|');
     }
   }
 
@@ -2559,7 +2530,7 @@ async function _startGame() {
     // Only reset teams if this wasn't a team game
     if (!_toggleState['teams_enabled']) {
       teamAssignments = [];
-      teamNames = [];
+      teamNames = []; teamColors = [];
     }
     // teams_enabled stays as-is — if it was a team game it remains On for rematch
   } else {
@@ -2905,7 +2876,7 @@ function chipAvatarHtml(player) {
 async function init() {
   connectWS();
   buildNumberGrid();
-  renderRingPanel();
+  selectRing('single');
 
   const current = await api('GET', '/game/state');
   if (current && !current.detail && !current.game_over) {
