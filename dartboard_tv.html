@@ -1239,7 +1239,7 @@ function handleEvent(event, payload) {
       _limboBarDisplay = (state && state.mode === 'limbo')
         ? (state.mode_display?.current_bar ?? null)
         : null;
-      showGameOver._fired = false;
+      showGameOver._fired = null;
       const feed = document.getElementById('tvDartsFeed');
       if (feed) feed.innerHTML = '';
       // Clean up any lingering overlays from previous game
@@ -1946,6 +1946,8 @@ async function loadAllTimeStats(playerIds) {
 function playRandomAudio(files) {
   if (!files || !files.length) return;
   const url = files[Math.floor(Math.random() * files.length)];
+  console.log('[AUDIO] playRandomAudio called:', url);
+  console.trace('[AUDIO] call stack');
   playAudio(url);
 }
 
@@ -4091,7 +4093,7 @@ function renderCricketTV(ds) {
       label: p.name,
       marks: marks[p.id] || {},
       score: state.player_scores[p.id] || 0,
-      color: playerColorOf(p.id),
+      color: teamColors[i % teamColors.length],
     }));
   }
 
@@ -5634,8 +5636,9 @@ function getMedalClass(id, type) {
 }
 
 function showGameOver(payload) {
-  if (showGameOver._fired) return; // already handled this game's over
-  showGameOver._fired = true;
+  console.log('[TV] showGameOver mode:', state && state.mode, 'winner_id:', payload.winner_id || (state && state.winner_id));
+  if (showGameOver._fired === state?.game_id) return; // already handled this game's over
+  showGameOver._fired = state?.game_id;
   const ds = state && state.mode_display || {};
   const teams = ds.teams;
   const wid = payload.winner_id || (state && state.winner_id);
