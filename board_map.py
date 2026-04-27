@@ -1,130 +1,120 @@
 """
-board_map.py - Maps pixel coordinates to dartboard segments
+board_map.py - Maps pixel coordinates to dartboard segments using homography
 
-Uses calibration.json to compute angle/distance from bullseye
-and determine which segment a dart landed in.
+Uses calibration.json to compute a perspective transform from camera pixel
+space to a top-down board coordinate system (mm from center).
 """
 
 import json
 import math
+import numpy as np
+import cv2
 
 # Dartboard segment layout - clockwise from top (12 o'clock = 20)
 SEGMENTS = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5]
 
-# Each segment is 18 degrees wide, starting at -9 degrees from top
-# Angle 0 = top (12 o'clock = segment 20)
-
-# Known outer edge points and their real angles on the board
-POINT_ANGLES = {
-    "20_outer": 0,
-    "6_outer":  90,
-    "11_outer": 270,
-    "14_outer": 288,
-    "9_outer":  306,
-    "12_outer": 324,
-    "5_outer":  342,
+# Real board coordinates for each calibration point (x_mm, y_mm)
+# Origin = bullseye, x positive = right (toward 6), y negative = up (toward 20)
+POINT_REAL_COORDS = {
+    "bullseye": (0.0,    0.0),
+    "20_outer": (0.0,   -170.0),   # 0 deg
+    "18_outer": (104.5, -137.4),   # 36 deg
+    "6_outer":  (170.0,  0.0),     # 90 deg
+    "10_outer": (137.4,  99.7),    # 126 deg
+    "3_outer":  (0.0,    170.0),   # 180 deg
+    "11_outer": (-170.0, 0.0),     # 270 deg
+    "14_outer": (-161.8, -52.6),   # 288 deg
+    "5_outer":  (-52.6,  -161.8),  # 342 deg
 }
 
+# Board ring radii in mm
+OUTER_BULL_R    = 6.35
+INNER_BULL_R    = 15.9
+TRIPLE_INNER_R  = 99.0
+TRIPLE_OUTER_R  = 107.0
+DOUBLE_INNER_R  = 162.0
+DOUBLE_OUTER_R  = 170.0
 
-def compute_scale_and_rotation(cam_data):
+
+def compute_homography(cam_data):
     """
-    Given calibration points for one camera, compute:
-    - bullseye pixel (cx, cy)
-    - rotation offset: difference between pixel angle and real board angle
-    - scale: pixels per mm (using outer ring radius ~170mm)
-    Returns (cx, cy, rotation_offset_deg, pixels_per_mm)
+    Compute homography matrix from pixel space to board mm space.
     """
-    cx, cy = cam_data["bullseye"]
+    src_pts = []
+    dst_pts = []
 
-    angles_pixel = []
-    angles_real = []
-    distances = []
-
-    for point_name, real_angle in POINT_ANGLES.items():
+    for point_name, real_coord in POINT_REAL_COORDS.items():
         if point_name not in cam_data:
             continue
         px, py = cam_data[point_name]
-        dx = px - cx
-        dy = py - cy
-        # pixel angle: 0=right, going clockwise. Convert to board convention (0=up)
-        pixel_angle = math.degrees(math.atan2(dy, dx))  # -180 to 180
-        # Convert to 0=up clockwise
-        pixel_angle_board = (pixel_angle + 90) % 360
+        rx, ry = real_coord
+        src_pts.append([float(px), float(py)])
+        dst_pts.append([float(rx), float(ry)])
 
-        dist = math.sqrt(dx*dx + dy*dy)
-        distances.append(dist)
+    src = np.array(src_pts, dtype=np.float32)
+    dst = np.array(dst_pts, dtype=np.float32)
 
-        # Compute rotation offset for this point
-        offset = (real_angle - pixel_angle_board) % 360
-        angles_pixel.append(pixel_angle_board)
-        angles_real.append(real_angle)
-
-    # Average rotation offset (handle wraparound)
-    offsets = [(r - p) % 360 for r, p in zip(angles_real, angles_pixel)]
-    # Unwrap offsets to avoid averaging across 0/360 boundary
-    offsets_unwrapped = []
-    base = offsets[0]
-    for o in offsets:
-        diff = (o - base + 180) % 360 - 180
-        offsets_unwrapped.append(base + diff)
-    rotation_offset = sum(offsets_unwrapped) / len(offsets_unwrapped)
-
-    # Average distance to outer ring (double ring outer = 170mm)
-    avg_dist = sum(distances) / len(distances)
-    pixels_per_mm = avg_dist / 170.0
-
-    return cx, cy, rotation_offset, pixels_per_mm
+    H, mask = cv2.findHomography(src, dst, cv2.RANSAC, 5.0)
+    return H
 
 
-def pixel_to_board(px, py, cam_data):
+def pixel_to_board_mm(px, py, H):
     """
-    Convert pixel coordinate to board position.
-    Returns (segment, ring, distance_from_center_mm, angle_deg)
-    ring: 'bull', 'inner_bull', 'single_inner', 'triple', 'single_outer', 'double', 'miss'
+    Transform pixel coordinate to board mm coordinate using homography.
+    Returns (x_mm, y_mm) where (0,0) is bullseye.
     """
-    cx, cy, rotation_offset, pixels_per_mm = compute_scale_and_rotation(cam_data)
+    pt = np.array([[[float(px), float(py)]]], dtype=np.float32)
+    result = cv2.perspectiveTransform(pt, H)
+    x_mm = float(result[0][0][0])
+    y_mm = float(result[0][0][1])
+    return x_mm, y_mm
 
-    dx = px - cx
-    dy = py - cy
 
-    # Distance in pixels, convert to mm
-    dist_px = math.sqrt(dx*dx + dy*dy)
-    dist_mm = dist_px / pixels_per_mm
+def board_mm_to_segment_ring(x_mm, y_mm):
+    """
+    Convert board mm coordinates to segment number and ring.
+    Returns (segment, ring, dist_mm, angle_deg)
+    """
+    dist_mm = math.sqrt(x_mm**2 + y_mm**2)
+    angle_deg = (math.degrees(math.atan2(x_mm, -y_mm))) % 360
 
-    # Angle in pixel space (0=right, ccw positive) -> board space (0=top, cw positive)
-    pixel_angle = math.degrees(math.atan2(dy, dx))
-    board_angle = (pixel_angle + 90 + rotation_offset) % 360
-
-    # Determine ring
-    if dist_mm <= 6.35:
+    if dist_mm <= OUTER_BULL_R:
         ring = "bull"
         segment = 25
-    elif dist_mm <= 15.9:
+    elif dist_mm <= INNER_BULL_R:
         ring = "inner_bull"
         segment = 25
-    elif dist_mm <= 99:
+    elif dist_mm <= TRIPLE_INNER_R:
         ring = "single_inner"
-        segment = angle_to_segment(board_angle)
-    elif dist_mm <= 107:
+        segment = angle_to_segment(angle_deg)
+    elif dist_mm <= TRIPLE_OUTER_R:
         ring = "triple"
-        segment = angle_to_segment(board_angle)
-    elif dist_mm <= 162:
+        segment = angle_to_segment(angle_deg)
+    elif dist_mm <= DOUBLE_INNER_R:
         ring = "single_outer"
-        segment = angle_to_segment(board_angle)
-    elif dist_mm <= 170:
+        segment = angle_to_segment(angle_deg)
+    elif dist_mm <= DOUBLE_OUTER_R:
         ring = "double"
-        segment = angle_to_segment(board_angle)
+        segment = angle_to_segment(angle_deg)
     else:
         ring = "miss"
         segment = 0
 
-    return segment, ring, dist_mm, board_angle
+    return segment, ring, dist_mm, angle_deg
+
+
+def pixel_to_board(px, py, cam_data):
+    """
+    Full pipeline: pixel -> board mm -> segment/ring.
+    Returns (segment, ring, dist_mm, angle_deg)
+    """
+    H = compute_homography(cam_data)
+    x_mm, y_mm = pixel_to_board_mm(px, py, H)
+    return board_mm_to_segment_ring(x_mm, y_mm)
 
 
 def angle_to_segment(angle_deg):
     """Convert board angle (0=top, clockwise) to segment number."""
-    # Each segment is 18 degrees, segment 20 is centered at 0 degrees
-    # So segment 20 spans -9 to +9 degrees (351 to 9)
     normalized = (angle_deg + 9) % 360
     index = int(normalized / 18)
     return SEGMENTS[index % 20]
@@ -149,19 +139,25 @@ def score_from_ring(segment, ring):
 def load_calibration(path="calibration.json"):
     with open(path) as f:
         data = json.load(f)
-    # Keys come in as strings from JSON
     return {int(k): v for k, v in data.items()}
 
 
 if __name__ == "__main__":
-    # Quick test
     cal = load_calibration()
-    for cam_id, cam_data in cal.items():
-        cx, cy, rot, scale = compute_scale_and_rotation(cam_data)
-        print(f"Cam {cam_id}: bullseye=({cx},{cy}) rotation={rot:.1f}deg scale={scale:.3f}px/mm")
 
-    # Test: bullseye pixel should map to bull
     for cam_id, cam_data in cal.items():
-        cx, cy = cam_data["bullseye"]
-        seg, ring, dist, angle = pixel_to_board(cx, cy, cam_data)
-        print(f"Cam {cam_id} bullseye test: segment={seg} ring={ring} dist={dist:.1f}mm")
+        H = compute_homography(cam_data)
+        print(f"\nCam {cam_id} homography computed OK")
+
+        # Test bullseye
+        bx, by = cam_data["bullseye"]
+        x_mm, y_mm = pixel_to_board_mm(bx, by, H)
+        print(f"  Bullseye pixel ({bx},{by}) -> ({x_mm:.1f}, {y_mm:.1f}) mm (should be 0,0)")
+
+        # Test each calibration point
+        for name, (rx, ry) in POINT_REAL_COORDS.items():
+            if name not in cam_data:
+                continue
+            px, py = cam_data[name]
+            mx, my = pixel_to_board_mm(px, py, H)
+            print(f"  {name}: ({mx:.1f},{my:.1f}) mm (expected ({rx:.1f},{ry:.1f}))")

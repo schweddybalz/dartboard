@@ -12,7 +12,8 @@ def capture(cam_id):
     frame = picam.capture_array()
     picam.stop()
     picam.close()
-    return cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    img = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    return cv2.resize(img, (1280, 720))
 
 def diff(base, current, threshold=30):
     gray_base = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY)
@@ -21,55 +22,49 @@ def diff(base, current, threshold=30):
     _, mask = cv2.threshold(delta, threshold, 255, cv2.THRESH_BINARY)
     return mask
 
-def find_tip(mask, bullseye):
+def find_tip(mask, bullseye, H):
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
-    largest = max(contours, key=cv2.contourArea)
+
+    bx, by = bullseye
+
+    # Filter contours to only those near the board area
+    board_contours = []
+    for c in contours:
+        pts = c[:, 0, :]
+        dists = np.sqrt((pts[:, 0] - bx)**2 + (pts[:, 1] - by)**2)
+        if dists.min() < 400:
+            board_contours.append(c)
+
+    if not board_contours:
+        return None
+
+    largest = max(board_contours, key=cv2.contourArea)
     pts = largest[:, 0, :]
 
-    # Fit line to get shaft direction
-    result = cv2.fitLine(largest, cv2.DIST_L2, 0, 0.01, 0.01).flatten()
-    vx, vy = float(result[0]), float(result[1])
-    x, y = float(result[2]), float(result[3])
+    # Filter points to those within 250mm of board center in mm space
+    board_pts = []
+    for pt in pts:
+        x_mm, y_mm = board_map.pixel_to_board_mm(int(pt[0]), int(pt[1]), H)
+        dist_mm = np.sqrt(x_mm**2 + y_mm**2)
+        if dist_mm <= 250:
+            board_pts.append(pt)
 
-    # Project all points onto shaft axis
-    projections = np.array([(pt[0] - x) * vx + (pt[1] - y) * vy for pt in pts])
-    
-    # Sort points by projection value
-    sorted_idx = np.argsort(projections)
-    sorted_pts = pts[sorted_idx]
-    sorted_proj = projections[sorted_idx]
-    
-    # Divide into 10 slices along the shaft
-    n_slices = 10
-    slice_size = len(sorted_pts) // n_slices
-    widths = []
-    centers = []
-    for i in range(n_slices):
-        start = i * slice_size
-        end = start + slice_size
-        slice_pts = sorted_pts[start:end]
-        # Width = perpendicular spread in this slice
-        perp = np.array([(-vy * (pt[0] - x) + vx * (pt[1] - y)) for pt in slice_pts])
-        width = perp.max() - perp.min() if len(perp) > 1 else 0
-        widths.append(width)
-        centers.append(slice_pts.mean(axis=0))
-    
-    # Tip is the slice with smallest width (narrowest = pointiest end)
-    # but exclude the first and last slice to avoid noise
-    inner_widths = widths[1:-1]
-    min_idx = inner_widths.index(min(inner_widths)) + 1
-    
-    # Check both ends - pick the narrower one
-    if widths[0] < widths[-1]:
-        tip_center = centers[0]
-    else:
-        tip_center = centers[-1]
-    
-    return (int(tip_center[0]), int(tip_center[1]))
+    if not board_pts:
+        # Fall back to full contour if no points in board area
+        board_pts = list(pts)
+
+    board_pts = np.array(board_pts)
+    # Tip = bottommost board point (highest y value)
+    tip = tuple(board_pts[board_pts[:, 1].argmax()])
+    return tip
 
 cal = board_map.load_calibration()
+
+# Precompute homographies
+H0 = board_map.compute_homography(cal[0])
+H1 = board_map.compute_homography(cal[1])
 
 print("Capturing baseline...")
 base0 = capture(0)
@@ -83,9 +78,11 @@ curr1 = capture(1)
 
 mask0 = diff(base0, curr0)
 mask1 = diff(base1, curr1)
+cv2.imwrite("diff_cam0.jpg", mask0)
+cv2.imwrite("diff_cam1.jpg", mask1)
 
-tip0 = find_tip(mask0, cal[0]["bullseye"])
-tip1 = find_tip(mask1, cal[1]["bullseye"])
+tip0 = find_tip(mask0, cal[0]["bullseye"], H0)
+tip1 = find_tip(mask1, cal[1]["bullseye"], H1)
 
 # Save tip visualization
 vis0 = curr0.copy()

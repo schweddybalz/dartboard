@@ -91,13 +91,14 @@ HTML = """<!DOCTYPE html>
     <h2>Camera 0</h2>
     <select id="select0">
       <option value="bullseye">Bullseye Center</option>
-      <option value="20_outer">20 - Outer Edge</option>
-      <option value="6_outer">6 - Outer Edge</option>
-      <option value="11_outer">11 - Outer Edge</option>
-      <option value="14_outer">14 - Outer Edge</option>
-      <option value="9_outer">9 - Outer Edge</option>
-      <option value="12_outer">12 - Outer Edge</option>
-      <option value="5_outer">5 - Outer Edge</option>
+      <option value="20_outer">20 - Outer Edge (top)</option>
+      <option value="18_outer">18 - Outer Edge (upper right)</option>
+      <option value="6_outer">6 - Outer Edge (right)</option>
+      <option value="10_outer">10 - Outer Edge (lower right)</option>
+      <option value="3_outer">3 - Outer Edge (bottom)</option>
+      <option value="11_outer">11 - Outer Edge (lower left)</option>
+      <option value="14_outer">14 - Outer Edge (left)</option>
+      <option value="5_outer">5 - Outer Edge (upper left)</option>
     </select>
     <div class="canvas-wrap" id="wrap0">
       <canvas id="cam0" width="1280" height="720"></canvas>
@@ -108,13 +109,14 @@ HTML = """<!DOCTYPE html>
     <h2>Camera 1</h2>
     <select id="select1">
       <option value="bullseye">Bullseye Center</option>
-      <option value="20_outer">20 - Outer Edge</option>
-      <option value="6_outer">6 - Outer Edge</option>
-      <option value="11_outer">11 - Outer Edge</option>
-      <option value="14_outer">14 - Outer Edge</option>
-      <option value="9_outer">9 - Outer Edge</option>
-      <option value="12_outer">12 - Outer Edge</option>
-      <option value="5_outer">5 - Outer Edge</option>
+      <option value="20_outer">20 - Outer Edge (top)</option>
+      <option value="18_outer">18 - Outer Edge (upper right)</option>
+      <option value="6_outer">6 - Outer Edge (right)</option>
+      <option value="10_outer">10 - Outer Edge (lower right)</option>
+      <option value="3_outer">3 - Outer Edge (bottom)</option>
+      <option value="11_outer">11 - Outer Edge (lower left)</option>
+      <option value="14_outer">14 - Outer Edge (left)</option>
+      <option value="5_outer">5 - Outer Edge (upper left)</option>
     </select>
     <div class="canvas-wrap" id="wrap1">
       <canvas id="cam1" width="1280" height="720"></canvas>
@@ -128,7 +130,7 @@ HTML = """<!DOCTYPE html>
 
 <script>
 const points = { 0: {}, 1: {} };
-const pointNames = ['bullseye','20_outer','6_outer','11_outer','14_outer','9_outer','12_outer','5_outer'];
+const pointNames = ['bullseye','20_outer','18_outer','6_outer','10_outer','3_outer','11_outer','14_outer','5_outer'];
 
 function loadImage(camId) {
   const canvas = document.getElementById('cam' + camId);
